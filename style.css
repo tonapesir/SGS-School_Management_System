@@ -34,7 +34,7 @@ body.role-cert #userMgmtAdminCards,
 body.role-master #userMgmtAdminCards{display:none!important}
 /* सर्व Users ला आता Google Sheets URL + Load Students सुविधा उपलब्ध (V19.15) */
 
-/* ===== CLASS TEACHER ROLE (V19.27) — फक्त स्वतःच्या वर्गाचे Teacher पान दिसते ===== */
+/* ===== CLASS TEACHER ROLE (V19.28) — फक्त स्वतःच्या वर्गाचे Teacher पान दिसते ===== */
 body.role-teacher .navbtn:not([data-page="teacher"]),
 body.role-teacher .dcard:not([data-page="teacher"]){display:none!important}
 body.role-teacher .master-only,
@@ -309,6 +309,26 @@ body:not(.auth-locked) .login-screen{display:none}
 @media print{
   html,body{width:210mm;height:297mm}
   #certModal .modal-box{width:210mm!important}
+}
+
+/* ===== ANDROID APP / लहान स्क्रीन साठी सुलभ दृश्य (V19.28) ===== */
+@media screen and (max-width:480px){
+  .navbtn{padding:10px 11px;font-size:11.5px}
+  .dcard{padding:13px}
+  .dcard .icon{font-size:24px;margin-bottom:6px}
+  .dcard h3{font-size:13px;margin-bottom:3px}
+  .dcard p{font-size:11px}
+  .tch-stat{padding:11px}
+  .tch-stat b{font-size:20px}
+  .tch-stat span{font-size:10px}
+  .card-header{padding:10px 12px;font-size:13px}
+  .btn{padding:8px 12px;font-size:12.5px}
+  .sec-title{font-size:15px}
+  .tch-tabbtn{padding:7px 11px;font-size:11.5px}
+}
+/* Android WebView मध्ये टच सोपे व्हावे म्हणून किमान आकार राखतो */
+@media screen and (max-width:480px) and (pointer:coarse){
+  .navbtn,.btn,.tch-tabbtn{min-height:38px}
 }
 
 /* ===== next style block ===== */

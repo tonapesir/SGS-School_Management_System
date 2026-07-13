@@ -1,3 +1,35 @@
+// ===== Android Back Button सपोर्ट — Dashboard कडे परत नेण्यासाठी (V19.28) =====
+// Android App मध्ये MainActivity च्या onBackPressed() मधून हे function call करा:
+//   webView.evaluateJavascript("window.androidBackPressed && window.androidBackPressed()", null);
+// ते 'true' परत केल्यास आतल्या आतच Dashboard वर गेले (App बंद करू नका),
+// 'false' परत केल्यास पान आधीच मुख्य/Dashboard वर आहे (तेव्हा App बंद करा किंवा Exit विचारा).
+window.androidBackPressed = function() {
+  try {
+    if (!currentUser) return false; // Login पानावर असल्यास App लाच निर्णय घेऊ द्या
+    var home = defaultPageForRole(currentUser.role);
+    var activePage = document.querySelector('.page.active');
+    var activeId = activePage ? activePage.id.replace('pg-','') : '';
+    if (activeId !== home) {
+      showPage(home);
+      return true;
+    }
+    // Teacher च्या बाबतीत मुख्य पानावर असतानाही आतला Tab डॅशबोर्ड नसल्यास तो आधी बदला
+    if (currentUser.role === 'teacher') {
+      var activeTab = document.querySelector('.tch-tabbtn.active');
+      var tabName = activeTab ? activeTab.getAttribute('data-tch') : '';
+      if (tabName && tabName !== 'dash') {
+        tchShowTab('dash');
+        return true;
+      }
+    }
+    return false; // आधीच मुख्य पानावर — App ला Exit करू द्या
+  } catch (e) {
+    return false;
+  }
+};
+
+// ===== next script block =====
+
 // URL persistence
 var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbyc_FB6OR_7FOLmUJnldpdU-nBfq8Wk0g-ZP-cvMDZQyDfb_SQx9ysGmKEV95sOF8s6/exec';
 
@@ -46,8 +78,7 @@ function syncRemoteUsers(onDone) {
   window[cb] = function(r) {
     if (r && r.status === 'ok' && r.data) {
       r.data.forEach(function(u) {
-        // Username नेहमी लहान अक्षरात साठवला जातो जेणेकरून Login केस-इनसेन्सिटिव्ह राहील (V19.27)
-        AUTH_USERS[String(u.username || '').toLowerCase()] = { password: u.password, role: u.role, label: u.label, assignedClass: u.assignedClass || '' };
+        AUTH_USERS[u.username] = { password: u.password, role: u.role, label: u.label, assignedClass: u.assignedClass || '' };
       });
     }
     finish();
@@ -117,8 +148,7 @@ function attemptLogin(ev) {
   var uEl = document.getElementById('loginUsername');
   var pEl = document.getElementById('loginPassword');
   var st = document.getElementById('loginStatus');
-  // Username केस-इनसेन्सिटिव्ह केलं आहे: Teacher_1 / teacher_1 / TEACHER_1 सर्व चालतील (V19.27)
-  var username = (uEl ? uEl.value : '').trim().toLowerCase();
+  var username = (uEl ? uEl.value : '').trim();
   var password = pEl ? pEl.value : '';
 
   // Super Master: Google Sheets पूर्णपणे बंद/अनुपलब्ध असतानाही शाळेला नेहमी प्रवेश मिळावा
