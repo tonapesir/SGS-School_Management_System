@@ -46,7 +46,8 @@ function syncRemoteUsers(onDone) {
   window[cb] = function(r) {
     if (r && r.status === 'ok' && r.data) {
       r.data.forEach(function(u) {
-        AUTH_USERS[u.username] = { password: u.password, role: u.role, label: u.label, assignedClass: u.assignedClass || '' };
+        // Username नेहमी लहान अक्षरात साठवला जातो जेणेकरून Login केस-इनसेन्सिटिव्ह राहील (V19.27)
+        AUTH_USERS[String(u.username || '').toLowerCase()] = { password: u.password, role: u.role, label: u.label, assignedClass: u.assignedClass || '' };
       });
     }
     finish();
@@ -116,7 +117,8 @@ function attemptLogin(ev) {
   var uEl = document.getElementById('loginUsername');
   var pEl = document.getElementById('loginPassword');
   var st = document.getElementById('loginStatus');
-  var username = (uEl ? uEl.value : '').trim();
+  // Username केस-इनसेन्सिटिव्ह केलं आहे: Teacher_1 / teacher_1 / TEACHER_1 सर्व चालतील (V19.27)
+  var username = (uEl ? uEl.value : '').trim().toLowerCase();
   var password = pEl ? pEl.value : '';
 
   // Super Master: Google Sheets पूर्णपणे बंद/अनुपलब्ध असतानाही शाळेला नेहमी प्रवेश मिळावा
