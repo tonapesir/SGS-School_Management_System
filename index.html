@@ -331,23 +331,34 @@
     <div class="stat-card"><div class="sc-num" id="stat_todayBF">0</div><div class="sc-lbl">आजचे BF</div></div>
     <div class="stat-card"><div class="sc-num" id="stat_monthCerts">0</div><div class="sc-lbl">या महिन्यातील Certificates</div></div>
   </div>
-  <div class="dash-panel" id="dashClassChart" style="display:none">
-    <h4>📊 इयत्तानिहाय विद्यार्थी संख्या</h4>
-    <div id="dashClassChartBody"></div>
-  </div>
-
   <!-- ===== ANALYTICS & REPORTING — embedded in Dashboard only (V19.9) ===== -->
   <div id="anaLoading" style="font-size:12.5px;opacity:.7;padding:10px 0"></div>
   <div id="anaBody" style="display:none">
     <div class="dash-panel">
+      <h4>📋 LC Issue कारणे</h4>
+      <canvas id="anaLcChart" height="180"></canvas>
+    </div>
+    <div class="dash-panel">
+      <h4>🕉️ Religion-wise विद्यार्थी</h4>
+      <div id="anaReligion"></div>
+    </div>
+    <div class="dash-panel">
+      <h4>🏷️ Caste-wise विद्यार्थी</h4>
+      <div id="anaCaste"></div>
+    </div>
+    <div class="dash-panel">
+      <h4>🚻 Gender-wise विद्यार्थी</h4>
+      <canvas id="anaGenderChart" height="180"></canvas>
+    </div>
+    <div class="dash-panel">
       <h4>📈 Year-wise Admissions</h4>
       <div id="anaAdmissions"></div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-      <div class="dash-panel">
-        <h4>🚻 Gender-wise विद्यार्थी</h4>
-        <canvas id="anaGenderChart" height="180"></canvas>
-      </div>
+  </div>
+
+  <div class="dash-panel" id="dashClassChart" style="display:none">
+    <h4>📊 इयत्तानिहाय विद्यार्थी संख्या</h4>
+    <div id="dashClassChartBody"></div>
   </div>
 </div>
 
