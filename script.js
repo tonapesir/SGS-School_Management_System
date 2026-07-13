@@ -3977,7 +3977,6 @@ function tchLoadNoticesFull() {
     }).join('');
   });
 }
-var _anaGenderChart = null, _anaLcChart = null;
 function loadAnalytics() {
   var url = getUrl();
   var loading = document.getElementById('anaLoading');
@@ -4014,33 +4013,22 @@ function renderBarList(containerId, counts) {
       + '<div class="bcr-val">' + e[1] + '</div></div>';
   }).join('');
 }
+var GENDER_LABELS_MR = { 'Male': 'पुरुष विद्यार्थी', 'Female': 'महिला विद्यार्थी', 'Other': 'इतर विद्यार्थी' };
+function renderGenderCards(genderCounts) {
+  var wrap = document.getElementById('dashGenderCards');
+  if (!wrap) return;
+  var data = genderCounts || {};
+  var keys = Object.keys(data);
+  if (!keys.length) { wrap.style.display = 'none'; return; }
+  wrap.innerHTML = keys.map(function(k) {
+    var lbl = GENDER_LABELS_MR[k] || (k + ' विद्यार्थी');
+    return '<div class="stat-card"><div class="sc-num">' + (data[k] || 0) + '</div><div class="sc-lbl">' + lbl + '</div></div>';
+  }).join('');
+  wrap.style.display = 'grid';
+}
 function renderAnalytics(r) {
   renderBarList('anaAdmissions', r.admissionsByYear || {});
-  renderBarList('anaReligion', r.religionCounts || {});
-  renderBarList('anaCaste', r.casteCounts || {});
-
-  if (typeof Chart !== 'undefined') {
-    var gCtx = document.getElementById('anaGenderChart');
-    var gData = r.genderCounts || {};
-    if (_anaGenderChart) _anaGenderChart.destroy();
-    if (gCtx) {
-      _anaGenderChart = new Chart(gCtx, {
-        type: 'pie',
-        data: { labels: Object.keys(gData), datasets: [{ data: Object.values(gData), backgroundColor: ['#d4902a','#1a4a7a','#1a7a3a','#7a1a1a'] }] },
-        options: { plugins: { legend: { labels: { color: '#f0e8d8' } } } }
-      });
-    }
-    var lCtx = document.getElementById('anaLcChart');
-    var lData = r.lcReasonCounts || {};
-    if (_anaLcChart) _anaLcChart.destroy();
-    if (lCtx) {
-      _anaLcChart = new Chart(lCtx, {
-        type: 'pie',
-        data: { labels: Object.keys(lData), datasets: [{ data: Object.values(lData), backgroundColor: ['#c0521a','#1a7a3a','#555'] }] },
-        options: { plugins: { legend: { labels: { color: '#f0e8d8' } } } }
-      });
-    }
-  }
+  renderGenderCards(r.genderCounts || {});
 }
 
 // ===== next script block =====
