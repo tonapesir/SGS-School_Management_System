@@ -1,4 +1,3 @@
-
 // ===== Android Back Button सपोर्ट — Dashboard कडे परत नेण्यासाठी (V19.28) =====
 // Android App मध्ये MainActivity च्या onBackPressed() मधून हे function call करा:
 //   webView.evaluateJavascript("window.androidBackPressed && window.androidBackPressed()", null);
@@ -29,10 +28,10 @@ window.androidBackPressed = function() {
   }
 };
 
-
+/* ==================== */
 
 // URL persistence
-var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbzMW3WWeFRQuvPFLvjUiCJ7aZcej0oEdt_8_XhOotrzh-WYQyrigWMEDRQ9CpiQRnrs/exec';
+var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbzq6YnbeoX0TvwlZrCegnos8nvlIriZvpyvQX-_lrhRtgvFH_VoQ4tkFCUV-Nr6Jp5jJQ/exec';
 
 // =====================================================
 // 🔐 LOGIN + ROLE PERMISSIONS
@@ -2272,7 +2271,7 @@ function exportATPDF() {
   }, 600);
 }
 
-
+/* ==================== */
 
 // ============================================================
 // WORD (.docx) EXPORT — Template-based Mail Merge
@@ -3095,12 +3094,27 @@ function shareProfileImage() {
 
   function renderAndShare() {
     html2canvas(document.getElementById('shareCard'), { backgroundColor: '#ffffff', scale: 2 }).then(function(canvas) {
+      var fileName = 'Profile_' + (d.regNo || d.firstName || 'student').toString().replace(/[^a-zA-Z0-9]/g,'_') + '.png';
+      var waMsg = 'नमस्कार, ' + (d.firstName||'आपल्या पाल्याचे') + ' (इयत्ता ' + (d.iyatta||'') + '-' + (d.tukdi||'') + ') यांचे Profile — कृपया माहिती तपासा.';
+      var num = (d.whatsappMobile || d.alternateMobile || d.contact || '').toString().replace(/[^0-9]/g,'');
+      var waNum = num.length === 10 ? '91' + num : num;
+
+      // ===== Android App मध्ये असल्यास — Native Bridge द्वारे थेट WhatsApp Share (V19.31) =====
+      // Android Studio मध्ये webView.addJavascriptInterface(new AndroidShare(...), "AndroidShare") जोडल्यावर हे आपोआप वापरले जाईल.
+      if (window.AndroidShare && typeof window.AndroidShare.shareImageBase64 === 'function') {
+        var base64Data = canvas.toDataURL('image/png').split(',')[1];
+        try {
+          window.AndroidShare.shareImageBase64(base64Data, fileName, waMsg, waNum);
+          btn.disabled = false; btn.textContent = '📤 विद्यार्थ्याचे Profile फोटो WhatsApp वर पाठवा';
+          if (statusEl) statusEl.textContent = '✅ WhatsApp उघडत आहे...';
+          return;
+        } catch (eAndroid) {
+          // Native bridge अयशस्वी झाल्यास खालील सामान्य पद्धतीने पुढे जा
+        }
+      }
+
       canvas.toBlob(function(blob) {
-        var fileName = 'Profile_' + (d.regNo || d.firstName || 'student').toString().replace(/[^a-zA-Z0-9]/g,'_') + '.png';
         var file = new File([blob], fileName, { type: 'image/png' });
-        var waMsg = 'नमस्कार, ' + (d.firstName||'आपल्या पाल्याचे') + ' (इयत्ता ' + (d.iyatta||'') + '-' + (d.tukdi||'') + ') यांचे Profile — कृपया माहिती तपासा.';
-        var num = (d.whatsappMobile || d.alternateMobile || d.contact || '').toString().replace(/[^0-9]/g,'');
-        var waNum = num.length === 10 ? '91' + num : num;
 
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
           navigator.share({ files: [file], title: 'Student Profile', text: waMsg })
@@ -4071,7 +4085,6 @@ function tchLoadNoticesFull() {
     }).join('');
   });
 }
-var _anaGenderChart = null, _anaLcChart = null;
 function loadAnalytics() {
   var url = getUrl();
   var loading = document.getElementById('anaLoading');
@@ -4110,35 +4123,17 @@ function renderBarList(containerId, counts) {
 }
 function renderAnalytics(r) {
   renderBarList('anaAdmissions', r.admissionsByYear || {});
-  renderBarList('anaReligion', r.religionCounts || {});
-  renderBarList('anaCaste', r.casteCounts || {});
 
-  if (typeof Chart !== 'undefined') {
-    var gCtx = document.getElementById('anaGenderChart');
-    var gData = r.genderCounts || {};
-    if (_anaGenderChart) _anaGenderChart.destroy();
-    if (gCtx) {
-      _anaGenderChart = new Chart(gCtx, {
-        type: 'pie',
-        data: { labels: Object.keys(gData), datasets: [{ data: Object.values(gData), backgroundColor: ['#d4902a','#1a4a7a','#1a7a3a','#7a1a1a'] }] },
-        options: { plugins: { legend: { labels: { color: '#f0e8d8' } } } }
-      });
-    }
-    var lCtx = document.getElementById('anaLcChart');
-    var lData = r.lcReasonCounts || {};
-    if (_anaLcChart) _anaLcChart.destroy();
-    if (lCtx) {
-      _anaLcChart = new Chart(lCtx, {
-        type: 'pie',
-        data: { labels: Object.keys(lData), datasets: [{ data: Object.values(lData), backgroundColor: ['#c0521a','#1a7a3a','#555'] }] },
-        options: { plugins: { legend: { labels: { color: '#f0e8d8' } } } }
-      });
-    }
-  }
+  var gData = r.genderCounts || {};
+  var girls = gData['Female'] || 0;
+  var boys = gData['Male'] || 0;
+  var gEl = document.getElementById('stat_totalGirls');
+  var bEl = document.getElementById('stat_totalBoys');
+  if (gEl) gEl.textContent = girls;
+  if (bEl) bEl.textContent = boys;
 }
 
-
-
+/* ==================== */
 
 function showSaveNotif(icon,title,serial,label,msg){
   var el=function(id){return document.getElementById(id);};

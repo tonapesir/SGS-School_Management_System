@@ -3,64 +3,123 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>गोपनीयता धोरण — SGS School Management System</title>
+<title>गोपनीयता धोरण — श्री.गोविंदराम सेक्सरिया हायस्कूल, पाचोरा</title>
+<link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;700&family=Noto+Sans+Devanagari:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-  body{font-family:'Noto Sans Devanagari','Mukta',sans-serif;max-width:820px;margin:0 auto;padding:24px 20px 60px;line-height:1.8;color:#222;background:#fafafa}
-  h1{font-size:24px;border-bottom:3px solid #d4902a;padding-bottom:10px}
-  h2{font-size:18px;color:#1a3a6a;margin-top:32px}
-  p,li{font-size:15px}
-  .updated{color:#666;font-size:13px;margin-bottom:24px}
-  .box{background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:20px 24px;margin-top:16px}
-  a{color:#1a6ab0}
+  :root{
+    --navy:#1a2a4a; --navy2:#223262;
+    --gold:#d4902a; --gold2:#e8b05a;
+    --peach:#fdf0e6; --txt:#2a2a2a;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family:'Mukta','Noto Sans Devanagari',sans-serif;
+    background:var(--peach); color:var(--txt); line-height:1.7;
+  }
+  header{
+    background:linear-gradient(135deg,var(--navy),var(--navy2));
+    color:#fff; padding:28px 20px; text-align:center;
+  }
+  header h1{margin:0 0 6px; font-size:22px}
+  header p{margin:0; opacity:.85; font-size:14px}
+  main{max-width:820px; margin:0 auto; padding:24px 20px 60px}
+  .card{
+    background:#fff; border-radius:12px; padding:22px 24px; margin-bottom:18px;
+    box-shadow:0 2px 10px rgba(0,0,0,.06); border-left:4px solid var(--gold);
+  }
+  h2{color:var(--navy2); font-size:18px; margin-top:0}
+  ul{padding-left:22px; margin:10px 0}
+  li{margin-bottom:6px}
+  .updated{text-align:center; font-size:13px; opacity:.7; margin-bottom:20px}
+  a{color:var(--gold); font-weight:600; text-decoration:none}
+  a:hover{text-decoration:underline}
+  footer{text-align:center; font-size:12.5px; opacity:.65; padding:20px}
 </style>
 </head>
 <body>
-  <h1>गोपनीयता धोरण (Privacy Policy)</h1>
-  <p class="updated">अद्ययावत दिनांक: १२ जुलै २०२६</p>
 
-  <div class="box">
-    <p><b>Shri Govindrao Seksaria High School, Pachora</b> द्वारे चालवली जाणारी <b>SGS School Management System</b> ही शाळा-व्यवस्थापन प्रणाली/ॲप शाळेच्या अंतर्गत प्रशासकीय वापरासाठी बनवली आहे. या पानावर, हे ॲप कोणती माहिती गोळा करते, ती कशी वापरली जाते, आणि कशी सुरक्षित ठेवली जाते याबद्दल माहिती दिली आहे.</p>
+<header>
+  <h1>गोपनीयता धोरण (Privacy Policy)</h1>
+  <p>श्री.गोविंदराम सेक्सरिया हायस्कूल, पाचोरा — School Management System</p>
+</header>
+
+<main>
+  <p class="updated">अंतिम अद्ययावत दिनांक: <strong>[तारीख टाका]</strong></p>
+
+  <div class="card">
+    <h2>1. प्रस्तावना</h2>
+    <p>हे School Management System App / वेबपेज (यापुढे "आम्ही", "App") श्री.गोविंदराम सेक्सरिया हायस्कूल, पाचोरा या शाळेद्वारे शाळेच्या अंतर्गत प्रशासकीय वापरासाठी (विद्यार्थी नोंदणी, उपस्थिती, निकाल, शुल्क, दाखले इ.) तयार करण्यात आले आहे. या धोरणात आम्ही कोणती माहिती गोळा करतो, ती कशी वापरतो आणि कशी सुरक्षित ठेवतो हे स्पष्ट केले आहे.</p>
   </div>
 
-  <h2>१. आम्ही कोणती माहिती गोळा करतो</h2>
-  <ul>
-    <li>विद्यार्थ्यांची शैक्षणिक माहिती — नाव, वर्ग, तुकडी, जन्मतारीख, पालकांचे नाव, जात/प्रवर्ग, मागील शाळा इ.</li>
-    <li>संपर्क माहिती — पालकांचा WhatsApp मोबाईल क्रमांक व पर्यायी मोबाईल क्रमांक (उपस्थिती व सूचना कळवण्यासाठी)</li>
-    <li>हजेरी, फी जमा, व शाळेशी संबंधित इतर नोंदी (उदा. Positive/Warning Remarks, Updown/वाहतूक माहिती)</li>
-    <li>विद्यार्थ्याचा फोटो (ओळखपत्र व प्रमाणपत्रांसाठी)</li>
-    <li>ॲप वापरणाऱ्या शिक्षक/कर्मचाऱ्यांचे Login Username (पासवर्ड एनक्रिप्टेड स्वरूपात साठवलेला नाही असल्यास ही प्रणाली फक्त शाळेच्या अंतर्गत वापरासाठी मर्यादित आहे)</li>
-  </ul>
+  <div class="card">
+    <h2>2. कोणती माहिती गोळा केली जाते</h2>
+    <ul>
+      <li><strong>विद्यार्थी माहिती:</strong> नाव, जन्मतारीख, लिंग, वर्ग/इयत्ता, Roll No., पत्ता, पालकांचे नाव व संपर्क क्रमांक, WhatsApp/Alternate Mobile No., फोटो.</li>
+      <li><strong>शैक्षणिक माहिती:</strong> उपस्थिती, परीक्षा निकाल, प्रगती अहवाल, प्रवेश तपशील.</li>
+      <li><strong>शिक्षक/कर्मचारी माहिती:</strong> नाव, संपर्क क्रमांक, नेमून दिलेले वर्ग/विषय, वाहतूक संपर्क तपशील.</li>
+      <li><strong>Login माहिती:</strong> Username व Role (Admin/Teacher/Student) — वापरकर्ता ओळख पडताळण्यासाठी.</li>
+      <li><strong>तांत्रिक माहिती (केवळ Android App वापरताना):</strong> फोटो/दस्तऐवज Download व Share करण्यासाठी आवश्यक असलेली तात्पुरती फाईल्स (Cache), Camera व Storage परवानगी.</li>
+    </ul>
+  </div>
 
-  <h2>२. माहितीचा वापर कशासाठी होतो</h2>
-  <ul>
-    <li>विद्यार्थ्यांचे शाळा सोडल्याचा दाखला (LC), Bonafide, उपस्थिती प्रमाणपत्र तयार करण्यासाठी</li>
-    <li>दैनंदिन हजेरी नोंदवण्यासाठी व पालकांना अनुपस्थितीबाबत कळवण्यासाठी (SMS/WhatsApp)</li>
-    <li>फी जमा नोंद ठेवण्यासाठी</li>
-    <li>शाळा प्रशासनासाठी सांख्यिकी अहवाल (हजेरी, प्रवर्गनिहाय, वयोगटनिहाय) तयार करण्यासाठी</li>
-    <li>वर्ग शिक्षक व शाळा प्रशासन यांच्यातील सूचना/संवादासाठी</li>
-  </ul>
+  <div class="card">
+    <h2>3. माहितीचा वापर कशासाठी केला जातो</h2>
+    <ul>
+      <li>विद्यार्थ्यांची नोंदणी, उपस्थिती व शैक्षणिक प्रगती व्यवस्थापित करण्यासाठी.</li>
+      <li>पालकांना/विद्यार्थ्यांना निकाल, दाखले, सूचना Call/SMS/WhatsApp द्वारे कळवण्यासाठी.</li>
+      <li>शाळेचे प्रशासकीय अहवाल (PDF/Word/Excel) व प्रमाणपत्रे तयार करण्यासाठी.</li>
+      <li>शाळा व्यवस्थापन प्रक्रिया सुरळीत व कागदविरहित (paperless) करण्यासाठी.</li>
+    </ul>
+    <p>ही माहिती जाहिरात, विक्री किंवा कोणत्याही तिसऱ्या व्यावसायिक पक्षाला (marketing/advertising companies) दिली जात नाही.</p>
+  </div>
 
-  <h2>३. माहिती कोणासोबत सामायिक केली जाते</h2>
-  <p>ही माहिती केवळ शाळेचे अधिकृत Super Master, Master, DEO, Certificate User व संबंधित वर्ग शिक्षक यांनाच, त्यांच्या अधिकारानुसार मर्यादित स्वरूपात उपलब्ध असते. वर्ग शिक्षकाला फक्त त्याच्या स्वतःच्या वर्गाची माहिती दिसते. ही माहिती कोणत्याही तृतीय पक्षाला (जाहिरातदार, विक्रेता इ.) विकली किंवा भाड्याने दिली जात नाही.</p>
+  <div class="card">
+    <h2>4. माहिती कुठे साठवली जाते</h2>
+    <p>माहिती Google Sheets / Google Apps Script (शाळेच्या स्वतःच्या Google Account अंतर्गत) यावर साठवली जाते. फोटो/दस्तऐवज तात्पुरत्या स्वरूपात Android Device च्या Cache फोल्डरमध्ये (Share/Download करताना) साठवले जातात आणि कालांतराने आपोआप पुसले जाऊ शकतात.</p>
+  </div>
 
-  <h2>४. माहिती कुठे साठवली जाते</h2>
-  <p>सर्व माहिती Google Sheets (Google Workspace/Google Apps Script) च्या माध्यमातून शाळेच्या स्वतःच्या Google खात्यावर साठवली जाते. Google च्या प्रमाणित सुरक्षा प्रणालीद्वारे ही माहिती संरक्षित असते.</p>
+  <div class="card">
+    <h2>5. WhatsApp Share सुविधा</h2>
+    <p>"Profile फोटो WhatsApp वर पाठवा" हे बटण वापरल्यास, संबंधित विद्यार्थ्याचे Profile Card फोटो केवळ <strong>तुम्ही निवडलेल्या WhatsApp Chat/Number</strong> पुरतेच पाठवले जाते. ही माहिती आमच्या सर्व्हरवर वेगळी साठवली जात नाही किंवा कोणत्याही तिसऱ्या पक्षाला पाठवली जात नाही — फोटो थेट Device वरून WhatsApp Appकडे जातो.</p>
+  </div>
 
-  <h2>५. माहितीची सुरक्षितता</h2>
-  <ul>
-    <li>प्रत्येक Login साठी Username/Password आवश्यक आहे</li>
-    <li>भूमिकेनुसार (Role-based) प्रवेश मर्यादा — प्रत्येक User ला फक्त त्याच्या कामाशी संबंधित माहितीच दिसते</li>
-    <li>सर्व महत्त्वाच्या कृतींची Activity Log मध्ये नोंद ठेवली जाते</li>
-  </ul>
+  <div class="card">
+    <h2>6. Android Permissions (परवानग्या)</h2>
+    <ul>
+      <li><strong>Camera:</strong> विद्यार्थी/कागदपत्रांचे फोटो काढण्यासाठी (ऐच्छिक).</li>
+      <li><strong>Storage:</strong> Download झालेले PDF/Word/Excel फाईल्स Device च्या Downloads फोल्डरमध्ये Save करण्यासाठी.</li>
+      <li><strong>Internet:</strong> शाळेच्या Google Sheets Database सोबत माहिती Sync करण्यासाठी.</li>
+    </ul>
+  </div>
 
-  <h2>६. पालकांचे/विद्यार्थ्यांचे अधिकार</h2>
-  <p>आपल्या पाल्याच्या नोंदीत काही चुकीची माहिती असल्यास, किंवा माहिती दुरुस्त/काढून टाकायची असल्यास, कृपया शाळा कार्यालयाशी थेट संपर्क साधावा.</p>
+  <div class="card">
+    <h2>7. माहितीची सुरक्षा</h2>
+    <p>Login Role-आधारित (Admin / Teacher / Student) प्रवेश-नियंत्रण वापरले जाते, म्हणजे प्रत्येक वापरकर्त्याला फक्त त्याच्या अधिकारानुसार माहिती दिसते. तरीही, इंटरनेटवरील कोणतीही प्रणाली १००% सुरक्षित असल्याची हमी देता येत नाही.</p>
+  </div>
 
-  <h2>७. संपर्क</h2>
-  <p>या गोपनीयता धोरणाबद्दल काही प्रश्न असल्यास कृपया संपर्क साधा:<br>
-  <b>Shri Govindrao Seksaria High School, Pachora, Jalgaon, Maharashtra</b></p>
+  <div class="card">
+    <h2>8. पालक/विद्यार्थी यांचे हक्क</h2>
+    <p>तुमच्या पाल्याची नोंदवलेली माहिती दुरुस्त करायची असल्यास किंवा ती काढून टाकायची असल्यास, कृपया शाळा कार्यालयाशी थेट संपर्क साधा.</p>
+  </div>
 
-  <h2>८. बदल</h2>
-  <p>हे गोपनीयता धोरण वेळोवेळी अद्ययावत केले जाऊ शकते. कोणताही महत्त्वाचा बदल झाल्यास ही तारीख अद्ययावत केली जाईल.</p>
+  <div class="card">
+    <h2>9. या धोरणातील बदल</h2>
+    <p>आवश्यकतेनुसार हे गोपनीयता धोरण वेळोवेळी अद्ययावत केले जाऊ शकते. महत्त्वाचे बदल झाल्यास या पानावर कळवले जाईल.</p>
+  </div>
+
+  <div class="card">
+    <h2>10. संपर्क</h2>
+    <p>या गोपनीयता धोरणाबाबत काही प्रश्न असल्यास कृपया संपर्क साधा:</p>
+    <p>
+      <strong>श्री.गोविंदराम सेक्सरिया हायस्कूल, पाचोरा</strong><br>
+      पत्ता: [शाळेचा पूर्ण पत्ता टाका]<br>
+      दूरध्वनी: [संपर्क क्रमांक टाका]<br>
+      Email: <a href="mailto:[email टाका]">[email टाका]</a>
+    </p>
+  </div>
+</main>
+
+<footer>© <span id="yr"></span> श्री.गोविंदराम सेक्सरिया हायस्कूल, पाचोरा — सर्व हक्क राखीव</footer>
+<script>document.getElementById('yr').textContent = new Date().getFullYear();</script>
 </body>
 </html>

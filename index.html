@@ -13,7 +13,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <link rel="stylesheet" href="style.css">
 
 </head>
@@ -326,6 +325,8 @@
   <div id="dashStatsLoading">⏳ आकडेवारी Load होत आहे...</div>
   <div class="stat-cards" id="dashStatCards" style="display:none">
     <div class="stat-card"><div class="sc-num" id="stat_totalStudents">0</div><div class="sc-lbl">एकूण विद्यार्थी</div></div>
+    <div class="stat-card"><div class="sc-num" id="stat_totalGirls">0</div><div class="sc-lbl">एकूण मुली</div></div>
+    <div class="stat-card"><div class="sc-num" id="stat_totalBoys">0</div><div class="sc-lbl">एकूण मुले</div></div>
     <div class="stat-card"><div class="sc-num" id="stat_todayLC">0</div><div class="sc-lbl">आजचे LC</div></div>
     <div class="stat-card"><div class="sc-num" id="stat_todayBF">0</div><div class="sc-lbl">आजचे BF</div></div>
     <div class="stat-card"><div class="sc-num" id="stat_monthCerts">0</div><div class="sc-lbl">या महिन्यातील Certificates</div></div>
@@ -341,24 +342,6 @@
     <div class="dash-panel">
       <h4>📈 Year-wise Admissions</h4>
       <div id="anaAdmissions"></div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-      <div class="dash-panel">
-        <h4>🚻 Gender-wise विद्यार्थी</h4>
-        <canvas id="anaGenderChart" height="180"></canvas>
-      </div>
-      <div class="dash-panel">
-        <h4>📋 LC Issue कारणे</h4>
-        <canvas id="anaLcChart" height="180"></canvas>
-      </div>
-    </div>
-    <div class="dash-panel">
-      <h4>🕉️ Religion-wise विद्यार्थी</h4>
-      <div id="anaReligion"></div>
-    </div>
-    <div class="dash-panel">
-      <h4>🏷️ Caste-wise विद्यार्थी</h4>
-      <div id="anaCaste"></div>
     </div>
   </div>
 </div>
@@ -848,7 +831,7 @@
 <div id="shareCardWrap" style="position:fixed;left:-9999px;top:0;z-index:-1">
   <div id="shareCard" style="width:640px;background:#ffffff;color:#1a1a1a;font-family:'Noto Sans Devanagari','Mukta',sans-serif;padding:24px;box-sizing:border-box">
     <div style="text-align:center;border-bottom:3px solid #d4902a;padding-bottom:12px;margin-bottom:16px">
-      <div style="font-size:18px;font-weight:700;color:#1a3a6a">श्री. गो. से. हायस्कूल, पाचोरा</div>
+      <div style="font-size:18px;font-weight:700;color:#1a3a6a">Shri Govindrao Seksaria High School, Pachora</div>
       <div style="font-size:13px;color:#555">विद्यार्थी माहिती (Student Profile)</div>
     </div>
     <div style="display:flex;gap:18px;align-items:flex-start;margin-bottom:16px">
@@ -975,7 +958,7 @@
   </div>
 </div>
 
-<!-- ==================== CLASS TEACHER PAGE (V19.30) ==================== -->
+<!-- ==================== CLASS TEACHER PAGE (V19.31) ==================== -->
 <!-- ==================== STATISTICS REPORT PAGE (V19.19 — Super Master/Master) ==================== -->
 <div id="pg-stats" class="page">
   <div class="sec-title" style="margin-bottom:4px">📊 सांख्यिकी अहवाल (Statistics Report)</div>
@@ -2202,6 +2185,7 @@ function getPhotoUrlByRegNo(regNo) {
   <div class="snm" id="sgsMsg"></div>
   <button class="snc" onclick="closeSaveNotif()">ठीक आहे</button>
 </div>
+
 <script src="script.js"></script>
 </body>
 </html>
