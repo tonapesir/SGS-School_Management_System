@@ -1,3 +1,4 @@
+
 // ===== Android Back Button सपोर्ट — Dashboard कडे परत नेण्यासाठी (V19.28) =====
 // Android App मध्ये MainActivity च्या onBackPressed() मधून हे function call करा:
 //   webView.evaluateJavascript("window.androidBackPressed && window.androidBackPressed()", null);
@@ -28,10 +29,10 @@ window.androidBackPressed = function() {
   }
 };
 
-// ===== next script block =====
+
 
 // URL persistence
-var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbyc_FB6OR_7FOLmUJnldpdU-nBfq8Wk0g-ZP-cvMDZQyDfb_SQx9ysGmKEV95sOF8s6/exec';
+var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbwsV7kUZa0UqTKmZYGUZzPmuh_4-20e5IiIW5HSOWQWazJfwL-PESQASZ1mYIFl_bVS/exec';
 
 // =====================================================
 // 🔐 LOGIN + ROLE PERMISSIONS
@@ -895,6 +896,7 @@ function fillModule(pfx,d) {
     set('s_firstName',d.firstName);
     set('s_motherName',d.motherName); set('s_gender',d.gender); set('s_religion',d.religion);
     set('s_caste',d.caste); set('s_subcaste',d.subcaste); set('s_dob',d.dob); set('s_dobWords',d.dobWords);
+    set('s_category',d.category); set('s_minority',d.minority);
     set('s_nationality',d.nationality||'Indian'); set('s_motherTongue',d.motherTongue||'मराठी');
     set('s_birthVillage',d.birthVillage);
     set('s_prevSchool',d.prevSchool); set('s_admissionDate',d.admissionDate);
@@ -969,6 +971,7 @@ function collectStudent() {
     pen:g('s_pen'),rollNo:g('s_rollNo'),firstName:g('s_firstName'),
     motherName:g('s_motherName'),gender:g('s_gender'),
     religion:g('s_religion'),caste:g('s_caste'),subcaste:g('s_subcaste'),
+    category:g('s_category'),minority:g('s_minority'),
     dob:g('s_dob'),dobWords:g('s_dobWords'),nationality:g('s_nationality'),
     motherTongue:g('s_motherTongue'),birthVillage:g('s_birthVillage'),
     prevSchool:g('s_prevSchool'),admissionDate:g('s_admissionDate'),
@@ -2269,7 +2272,7 @@ function exportATPDF() {
   }, 600);
 }
 
-// ===== next script block =====
+
 
 // ============================================================
 // WORD (.docx) EXPORT — Template-based Mail Merge
@@ -3042,6 +3045,7 @@ function renderStudentProfile(d) {
       ['इयत्ता', d.iyatta], ['तुकडी', d.tukdi], ['PEN', d.pen], ['Roll No', d.rollNo],
       ['पूर्ण नाव', d.firstName], ['आईचे नाव', d.motherName], ['लिंग', d.gender],
       ['धर्म', d.religion], ['जात', d.caste], ['पोटजात', d.subcaste],
+      ['प्रवर्ग (Category)', d.category], ['Minority', d.minority],
       ['जन्मदिनांक', d.dob], ['जन्मदिनांक (अक्षरी)', d.dobWords],
       ['राष्ट्रीयत्व', d.nationality], ['मातृभाषा', d.motherTongue], ['जन्मगाव', d.birthVillage],
       ['मागील शाळा', d.prevSchool], ['प्रवेश दिनांक', d.admissionDate], ['प्रवेश इयत्ता', d.admissionClass],
@@ -3977,6 +3981,7 @@ function tchLoadNoticesFull() {
     }).join('');
   });
 }
+var _anaGenderChart = null, _anaLcChart = null;
 function loadAnalytics() {
   var url = getUrl();
   var loading = document.getElementById('anaLoading');
@@ -4013,25 +4018,37 @@ function renderBarList(containerId, counts) {
       + '<div class="bcr-val">' + e[1] + '</div></div>';
   }).join('');
 }
-var GENDER_LABELS_MR = { 'Male': 'पुरुष विद्यार्थी', 'Female': 'महिला विद्यार्थी', 'Other': 'इतर विद्यार्थी' };
-function renderGenderCards(genderCounts) {
-  var wrap = document.getElementById('dashGenderCards');
-  if (!wrap) return;
-  var data = genderCounts || {};
-  var keys = Object.keys(data);
-  if (!keys.length) { wrap.style.display = 'none'; return; }
-  wrap.innerHTML = keys.map(function(k) {
-    var lbl = GENDER_LABELS_MR[k] || (k + ' विद्यार्थी');
-    return '<div class="stat-card"><div class="sc-num">' + (data[k] || 0) + '</div><div class="sc-lbl">' + lbl + '</div></div>';
-  }).join('');
-  wrap.style.display = 'grid';
-}
 function renderAnalytics(r) {
   renderBarList('anaAdmissions', r.admissionsByYear || {});
-  renderGenderCards(r.genderCounts || {});
+  renderBarList('anaReligion', r.religionCounts || {});
+  renderBarList('anaCaste', r.casteCounts || {});
+
+  if (typeof Chart !== 'undefined') {
+    var gCtx = document.getElementById('anaGenderChart');
+    var gData = r.genderCounts || {};
+    if (_anaGenderChart) _anaGenderChart.destroy();
+    if (gCtx) {
+      _anaGenderChart = new Chart(gCtx, {
+        type: 'pie',
+        data: { labels: Object.keys(gData), datasets: [{ data: Object.values(gData), backgroundColor: ['#d4902a','#1a4a7a','#1a7a3a','#7a1a1a'] }] },
+        options: { plugins: { legend: { labels: { color: '#f0e8d8' } } } }
+      });
+    }
+    var lCtx = document.getElementById('anaLcChart');
+    var lData = r.lcReasonCounts || {};
+    if (_anaLcChart) _anaLcChart.destroy();
+    if (lCtx) {
+      _anaLcChart = new Chart(lCtx, {
+        type: 'pie',
+        data: { labels: Object.keys(lData), datasets: [{ data: Object.values(lData), backgroundColor: ['#c0521a','#1a7a3a','#555'] }] },
+        options: { plugins: { legend: { labels: { color: '#f0e8d8' } } } }
+      });
+    }
+  }
 }
 
-// ===== next script block =====
+
+
 
 function showSaveNotif(icon,title,serial,label,msg){
   var el=function(id){return document.getElementById(id);};

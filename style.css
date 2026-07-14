@@ -1,3 +1,4 @@
+
 :root {
   --navy:#1a2a4a; --navy2:#223262; --navy3:#2c3e6b;
   --gold:#d4902a; --gold2:#e8b05a;
@@ -34,7 +35,7 @@ body.role-cert #userMgmtAdminCards,
 body.role-master #userMgmtAdminCards{display:none!important}
 /* सर्व Users ला आता Google Sheets URL + Load Students सुविधा उपलब्ध (V19.15) */
 
-/* ===== CLASS TEACHER ROLE (V19.28) — फक्त स्वतःच्या वर्गाचे Teacher पान दिसते ===== */
+/* ===== CLASS TEACHER ROLE (V19.29) — फक्त स्वतःच्या वर्गाचे Teacher पान दिसते ===== */
 body.role-teacher .navbtn:not([data-page="teacher"]),
 body.role-teacher .dcard:not([data-page="teacher"]){display:none!important}
 body.role-teacher .master-only,
@@ -331,7 +332,11 @@ body:not(.auth-locked) .login-screen{display:none}
   .navbtn,.btn,.tch-tabbtn{min-height:38px}
 }
 
-/* ===== next style block ===== */
+
+' +
+      '@page{size:A4;margin:0} body{margin:0;background:#fff;} ' + css +
+      '
+
 
 #sgsNotifBg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99998}
 #sgsNotif{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(.85);
