@@ -32,7 +32,7 @@ window.androidBackPressed = function() {
 
 
 // URL persistence
-var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbwsV7kUZa0UqTKmZYGUZzPmuh_4-20e5IiIW5HSOWQWazJfwL-PESQASZ1mYIFl_bVS/exec';
+var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbzq6YnbeoX0TvwlZrCegnos8nvlIriZvpyvQX-_lrhRtgvFH_VoQ4tkFCUV-Nr6Jp5jJQ/exec';
 
 // =====================================================
 // 🔐 LOGIN + ROLE PERMISSIONS
@@ -2996,7 +2996,23 @@ function loadStudentProfile(prefillKey) {
   renderStudentProfile(d);
 }
 
+function buildProfileFields(d) {
+  return [
+    ['शैक्षणिक वर्ष', d.acYear], ['Reg No', d.regNo], ['Student ID', d.studentId],
+    ['जनरल रजि. नं (Book No)', d.bookNo], ['आधार क्रमांक', d.aadhar],
+    ['इयत्ता', d.iyatta], ['तुकडी', d.tukdi], ['PEN', d.pen], ['Roll No', d.rollNo],
+    ['पूर्ण नाव', d.firstName], ['आईचे नाव', d.motherName], ['लिंग', d.gender],
+    ['धर्म', d.religion], ['जात', d.caste], ['पोटजात', d.subcaste],
+    ['प्रवर्ग (Category)', d.category], ['Minority', d.minority],
+    ['जन्मदिनांक', d.dob], ['जन्मदिनांक (अक्षरी)', d.dobWords],
+    ['राष्ट्रीयत्व', d.nationality], ['मातृभाषा', d.motherTongue], ['जन्मगाव', d.birthVillage],
+    ['मागील शाळा', d.prevSchool], ['प्रवेश दिनांक', d.admissionDate], ['प्रवेश इयत्ता', d.admissionClass],
+    ['संपर्क क्रमांक', d.contact], ['WhatsApp Mobile No.', d.whatsappMobile], ['Alternate Mobile No.', d.alternateMobile], ['पत्ता', d.address]
+  ];
+}
+
 function renderStudentProfile(d) {
+  window._lastProfileData = d;
   var empty = document.getElementById('profile_empty');
   var content = document.getElementById('profile_content');
   if (empty) empty.style.display = 'none';
@@ -3039,22 +3055,96 @@ function renderStudentProfile(d) {
   // ===== संपूर्ण माहिती Grid =====
   var grid = document.getElementById('prof_grid');
   if (grid) {
-    var fields = [
-      ['शैक्षणिक वर्ष', d.acYear], ['Reg No', d.regNo], ['Student ID', d.studentId],
-      ['जनरल रजि. नं (Book No)', d.bookNo], ['आधार क्रमांक', d.aadhar],
-      ['इयत्ता', d.iyatta], ['तुकडी', d.tukdi], ['PEN', d.pen], ['Roll No', d.rollNo],
-      ['पूर्ण नाव', d.firstName], ['आईचे नाव', d.motherName], ['लिंग', d.gender],
-      ['धर्म', d.religion], ['जात', d.caste], ['पोटजात', d.subcaste],
-      ['प्रवर्ग (Category)', d.category], ['Minority', d.minority],
-      ['जन्मदिनांक', d.dob], ['जन्मदिनांक (अक्षरी)', d.dobWords],
-      ['राष्ट्रीयत्व', d.nationality], ['मातृभाषा', d.motherTongue], ['जन्मगाव', d.birthVillage],
-      ['मागील शाळा', d.prevSchool], ['प्रवेश दिनांक', d.admissionDate], ['प्रवेश इयत्ता', d.admissionClass],
-      ['संपर्क क्रमांक', d.contact], ['WhatsApp Mobile No.', d.whatsappMobile], ['Alternate Mobile No.', d.alternateMobile], ['पत्ता', d.address]
-    ];
+    var fields = buildProfileFields(d);
     grid.innerHTML = fields.map(function(f) {
       var val = (f[1] === undefined || f[1] === null || f[1] === '') ? '—' : f[1];
       return '<div class="profile-field"><div class="pf-lbl">' + f[0] + '</div><div class="pf-val">' + val + '</div></div>';
     }).join('');
+  }
+}
+
+// ===== Profile फोटो-कार्ड तयार करून WhatsApp वर पाठवणे (V19.30) =====
+function shareProfileImage() {
+  var d = window._lastProfileData;
+  var statusEl = document.getElementById('profShareStatus');
+  var btn = document.getElementById('profShareBtn');
+  if (!d) { if (statusEl) statusEl.textContent = '⚠️ आधी विद्यार्थ्याचे Profile Load करा.'; return; }
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Image तयार होत आहे...';
+  if (statusEl) statusEl.textContent = '';
+
+  // ===== hidden Card भरा =====
+  document.getElementById('shareCardName').textContent = d.firstName || '—';
+  document.getElementById('shareCardMeta').textContent =
+    'इयत्ता ' + (d.iyatta || '—') + (d.tukdi ? ' - ' + d.tukdi : '') + '   |   Reg No: ' + (d.regNo || '—');
+  var photoBox = document.getElementById('shareCardPhoto');
+  var fields = buildProfileFields(d);
+  var rowsHtml = '';
+  for (var i = 0; i < fields.length; i += 2) {
+    var a = fields[i], b = fields[i+1];
+    function cellHtml(f) {
+      if (!f) return '<td style="padding:5px 8px"></td><td style="padding:5px 8px"></td>';
+      var val = (f[1] === undefined || f[1] === null || f[1] === '') ? '—' : f[1];
+      return '<td style="padding:5px 8px;color:#666;white-space:nowrap;border-bottom:1px solid #eee">' + f[0] + '</td>' +
+             '<td style="padding:5px 8px;font-weight:600;border-bottom:1px solid #eee">' + val + '</td>';
+    }
+    rowsHtml += '<tr>' + cellHtml(a) + cellHtml(b) + '</tr>';
+  }
+  document.getElementById('shareCardTable').innerHTML = rowsHtml;
+
+  function renderAndShare() {
+    html2canvas(document.getElementById('shareCard'), { backgroundColor: '#ffffff', scale: 2 }).then(function(canvas) {
+      canvas.toBlob(function(blob) {
+        var fileName = 'Profile_' + (d.regNo || d.firstName || 'student').toString().replace(/[^a-zA-Z0-9]/g,'_') + '.png';
+        var file = new File([blob], fileName, { type: 'image/png' });
+        var waMsg = 'नमस्कार, ' + (d.firstName||'आपल्या पाल्याचे') + ' (इयत्ता ' + (d.iyatta||'') + '-' + (d.tukdi||'') + ') यांचे Profile — कृपया माहिती तपासा.';
+        var num = (d.whatsappMobile || d.alternateMobile || d.contact || '').toString().replace(/[^0-9]/g,'');
+        var waNum = num.length === 10 ? '91' + num : num;
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          navigator.share({ files: [file], title: 'Student Profile', text: waMsg })
+            .then(function(){
+              btn.disabled = false; btn.textContent = '📤 विद्यार्थ्याचे Profile फोटो WhatsApp वर पाठवा';
+              if (statusEl) statusEl.textContent = '✅ Share पूर्ण झाले.';
+            })
+            .catch(function(){
+              btn.disabled = false; btn.textContent = '📤 विद्यार्थ्याचे Profile फोटो WhatsApp वर पाठवा';
+              if (statusEl) statusEl.textContent = 'ℹ️ Share रद्द झाले.';
+            });
+        } else {
+          // Fallback: फोटो Download करा + WhatsApp मध्ये संदेश तयार उघडा (फोटो manually attach करावा लागेल)
+          var a = document.createElement('a');
+          var urlObj = URL.createObjectURL(blob);
+          a.href = urlObj; a.download = fileName;
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+          setTimeout(function(){ URL.revokeObjectURL(urlObj); }, 4000);
+          var waLink = (waNum ? 'https://wa.me/' + waNum : 'https://wa.me/') + '?text=' + encodeURIComponent(waMsg + ' (सोबत डाउनलोड झालेला फोटो जोडा)');
+          window.open(waLink, '_blank');
+          btn.disabled = false; btn.textContent = '📤 विद्यार्थ्याचे Profile फोटो WhatsApp वर पाठवा';
+          if (statusEl) statusEl.textContent = '✅ फोटो Download झाला — आता उघडलेल्या WhatsApp Chat मध्ये तो फोटो जोडून (Attach) Send करा.';
+        }
+      }, 'image/png');
+    }).catch(function(err) {
+      btn.disabled = false; btn.textContent = '📤 विद्यार्थ्याचे Profile फोटो WhatsApp वर पाठवा';
+      if (statusEl) statusEl.textContent = '❌ Image तयार करता आले नाही: ' + err;
+    });
+  }
+
+  // फोटो Load होण्याची वाट पाहून मगच Canvas घ्या (cross-origin फोटो असल्यास तसाच पुढे जा)
+  if (d.photoUrl) {
+    photoBox.innerHTML = '<img src="' + escAttr(d.photoUrl) + '" crossorigin="anonymous" style="width:100%;height:100%;object-fit:cover" onerror="this.remove()">';
+    var imgEl = photoBox.querySelector('img');
+    if (imgEl && !imgEl.complete) {
+      imgEl.onload = renderAndShare;
+      imgEl.onerror = renderAndShare;
+      setTimeout(renderAndShare, 3000); // खूप वेळ लागल्यास वाट न पाहता पुढे जा
+    } else {
+      renderAndShare();
+    }
+  } else {
+    photoBox.innerHTML = '👤';
+    renderAndShare();
   }
 }
 

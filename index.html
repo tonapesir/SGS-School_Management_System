@@ -837,6 +837,29 @@
       </div>
     </div>
     <div class="profile-grid" id="prof_grid"></div>
+    <div style="margin-top:16px">
+      <button class="btn btn-gold" id="profShareBtn" onclick="shareProfileImage()">📤 विद्यार्थ्याचे Profile फोटो WhatsApp वर पाठवा</button>
+      <div id="profShareStatus" style="font-size:12.5px;margin-top:8px;color:#555"></div>
+    </div>
+  </div>
+</div>
+
+<!-- WhatsApp साठी Profile Card इमेज तयार करण्यासाठी — पडद्यावर दिसत नाही (V19.30) -->
+<div id="shareCardWrap" style="position:fixed;left:-9999px;top:0;z-index:-1">
+  <div id="shareCard" style="width:640px;background:#ffffff;color:#1a1a1a;font-family:'Noto Sans Devanagari','Mukta',sans-serif;padding:24px;box-sizing:border-box">
+    <div style="text-align:center;border-bottom:3px solid #d4902a;padding-bottom:12px;margin-bottom:16px">
+      <div style="font-size:18px;font-weight:700;color:#1a3a6a">Shri Govindrao Seksaria High School, Pachora</div>
+      <div style="font-size:13px;color:#555">विद्यार्थी माहिती (Student Profile)</div>
+    </div>
+    <div style="display:flex;gap:18px;align-items:flex-start;margin-bottom:16px">
+      <div id="shareCardPhoto" style="width:110px;height:135px;border:2px solid #d4902a;border-radius:6px;overflow:hidden;flex:0 0 auto;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:40px;color:#999">👤</div>
+      <div style="flex:1">
+        <div id="shareCardName" style="font-size:22px;font-weight:700;color:#1a3a6a">—</div>
+        <div id="shareCardMeta" style="font-size:14px;color:#555;margin-top:4px">—</div>
+      </div>
+    </div>
+    <table id="shareCardTable" style="width:100%;border-collapse:collapse;font-size:13px"></table>
+    <div style="text-align:center;margin-top:16px;font-size:11px;color:#888;border-top:1px solid #ddd;padding-top:8px">SGS School Management System — या माहितीची पडताळणी करा</div>
   </div>
 </div>
 
@@ -952,7 +975,7 @@
   </div>
 </div>
 
-<!-- ==================== CLASS TEACHER PAGE (V19.29) ==================== -->
+<!-- ==================== CLASS TEACHER PAGE (V19.30) ==================== -->
 <!-- ==================== STATISTICS REPORT PAGE (V19.19 — Super Master/Master) ==================== -->
 <div id="pg-stats" class="page">
   <div class="sec-title" style="margin-bottom:4px">📊 सांख्यिकी अहवाल (Statistics Report)</div>
