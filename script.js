@@ -1,3 +1,4 @@
+
 // ===== Android Back Button सपोर्ट — Dashboard कडे परत नेण्यासाठी (V19.28) =====
 // Android App मध्ये MainActivity च्या onBackPressed() मधून हे function call करा:
 //   webView.evaluateJavascript("window.androidBackPressed && window.androidBackPressed()", null);
@@ -28,10 +29,10 @@ window.androidBackPressed = function() {
   }
 };
 
-/* ==================== */
+
 
 // URL persistence
-var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbzMW3WWeFRQuvPFLvjUiCJ7aZcej0oEdt_8_XhOotrzh-WYQyrigWMEDRQ9CpiQRnrs/exec';
+var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbyGwktssvaGFtIu21cyyJ_aiO1ctP1JyIJjeVd7uveC9PHPRG7lO5jXZROCNLgd42mE/exec';
 
 // =====================================================
 // 🔐 LOGIN + ROLE PERMISSIONS
@@ -45,10 +46,10 @@ var AUTH_USERS = {
 };
 var currentUser = null;
 var USER_ALLOWED_PAGES = {
-  master: ['dashboard','student','lc','bonafide','attendance','search','history','users','profile','stats','maintenance'],
+  master: ['dashboard','student','lc','bonafide','attendance','search','history','users','profile','stats','maintenance','classinfo'],
   deo:    ['student','search','history','users','profile'],
   cert:   ['bonafide','attendance','search','history','users','profile'],
-  super:  ['dashboard','student','lc','bonafide','attendance','search','history','users','profile','stats','maintenance'],
+  super:  ['dashboard','student','lc','bonafide','attendance','search','history','users','profile','stats','maintenance','classinfo'],
   teacher:['teacher','profile']
 };
 var CERT_EDITABLE_FIELDS = {
@@ -2271,7 +2272,7 @@ function exportATPDF() {
   }, 600);
 }
 
-/* ==================== */
+
 
 // ============================================================
 // WORD (.docx) EXPORT — Template-based Mail Merge
@@ -3500,6 +3501,111 @@ function mntSaveChange() {
   });
 }
 
+// ===== Master / Super Master — वर्ग माहिती: विद्यार्थी यादी + Student Diary नोंदी (V19.32) =====
+var ciRoster = [];
+
+function ciShowTab(tab) {
+  document.querySelectorAll('#pg-classinfo .tch-tabbtn').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-ci') === tab); });
+  document.querySelectorAll('#pg-classinfo .tch-panel').forEach(function(p){ p.classList.remove('active'); });
+  var el = document.getElementById('cip-' + tab);
+  if (el) el.classList.add('active');
+}
+
+function ciLoadClass() {
+  var iyatta = document.getElementById('ci_class').value;
+  var tukdi = document.getElementById('ci_tukdi').value;
+  var statusEl = document.getElementById('ci_status');
+  if (!iyatta || !tukdi) { statusEl.textContent = '⚠️ वर्ग व तुकडी दोन्ही निवडा.'; return; }
+  statusEl.textContent = '⏳ Load होत आहे...';
+  document.getElementById('ci_content').style.display = 'none';
+
+  jsonpRequest({action:'getClassStudents', iyatta: iyatta, tukdi: tukdi}, function(rStu) {
+    if (!rStu || rStu.status !== 'ok') { statusEl.textContent = '❌ Load Failed'; return; }
+    ciRoster = rStu.data || [];
+    ciRenderStudents();
+
+    jsonpRequest({action:'getDiary', iyatta: iyatta, tukdi: tukdi}, function(rDiary) {
+      ciRenderDiary(rDiary && rDiary.status === 'ok' ? rDiary.data : []);
+      statusEl.textContent = '✅ ' + iyatta + ' - ' + tukdi + ' — ' + ciRoster.length + ' विद्यार्थी';
+      document.getElementById('ci_content').style.display = 'block';
+    });
+  });
+}
+
+function ciRenderStudents() {
+  var tbody = document.getElementById('ci_studentsTbody');
+  if (!ciRoster.length) { tbody.innerHTML = '<tr><td colspan="6">या वर्गात विद्यार्थी सापडले नाहीत.</td></tr>'; return; }
+  tbody.innerHTML = ciRoster.map(function(s) {
+    return '<tr>' +
+      '<td>' + (s.rollNo||'') + '</td><td>' + (s.fullName||'') + '</td><td>' + (s.gender||'') + '</td>' +
+      '<td>' + tchFmtDate(s.dob) + '</td><td>' + tchContactCell(s) + '</td>' +
+      '<td><button class="btn btn-blue" style="padding:3px 10px;font-size:11px" onclick="showPage(\'profile\');document.getElementById(\'prof_key\').value=\'' + s.regNo + '\';loadStudentProfile(\'' + s.regNo + '\');">🪪 Profile</button></td></tr>';
+  }).join('');
+}
+
+function ciRenderDiary(entries) {
+  var tbody = document.getElementById('ci_diaryTbody');
+  entries = entries || [];
+  if (!entries.length) { tbody.innerHTML = '<tr><td colspan="5">या वर्गासाठी अद्याप कोणतीही Diary नोंद नाही.</td></tr>'; return; }
+  var typeLabel = {positive:'👍 Positive', warning:'⚠️ Warning', scholarship:'🎓 Scholarship', personal:'📝 वैयक्तिक नोंदी'};
+  tbody.innerHTML = entries.map(function(e) {
+    return '<tr><td>' + tchFmtDate(e.date) + '</td><td>' + (e.fullName||'') + '</td>' +
+      '<td>' + (typeLabel[e.type]||e.type||'') + '</td><td>' + (e.remark||'') + '</td>' +
+      '<td>' + (e.enteredBy||'') + '</td></tr>';
+  }).join('');
+}
+
+var delCurrentStudent = null;
+
+function delSearchStudent() {
+  var regNo = document.getElementById('del_regNo').value.trim();
+  var statusEl = document.getElementById('del_status');
+  var resultBox = document.getElementById('del_result');
+  resultBox.style.display = 'none';
+  delCurrentStudent = null;
+  document.getElementById('del_confirmRegNo').value = '';
+  document.getElementById('del_confirmBtn').disabled = true;
+  if (!regNo) { statusEl.textContent = '⚠️ Reg No टाका.'; return; }
+  statusEl.textContent = '⏳ शोधत आहे...';
+  jsonpRequest({action:'search', q: regNo}, function(r) {
+    if (r && r.status === 'found') {
+      delCurrentStudent = r.data;
+      statusEl.textContent = '';
+      document.getElementById('del_studentName').textContent = r.data.firstName || '—';
+      document.getElementById('del_studentClass').textContent = (r.data.iyatta||'—') + ' - ' + (r.data.tukdi||'—');
+      document.getElementById('del_studentRegNo').textContent = r.data.regNo || regNo;
+      resultBox.style.display = 'block';
+    } else {
+      statusEl.textContent = '❌ या Reg No चा विद्यार्थी सापडला नाही.';
+    }
+  });
+}
+
+function delCheckConfirm() {
+  var typed = document.getElementById('del_confirmRegNo').value.trim().toLowerCase();
+  var actual = (delCurrentStudent ? delCurrentStudent.regNo : '').toString().trim().toLowerCase();
+  document.getElementById('del_confirmBtn').disabled = !(typed && actual && typed === actual);
+}
+
+function delConfirmDelete() {
+  if (!delCurrentStudent) return;
+  var statusEl = document.getElementById('del_status');
+  statusEl.textContent = '⏳ Delete होत आहे...';
+  document.getElementById('del_confirmBtn').disabled = true;
+  jsonpRequest({action:'deleteStudent', regNo: delCurrentStudent.regNo,
+    requesterUser: currentUser.username, requesterRole: currentUser.role}, function(r) {
+    if (r && r.status === 'ok') {
+      statusEl.textContent = '✅ विद्यार्थी यशस्वीरित्या Delete झाला — संपूर्ण माहिती DeletedStudents Sheet मध्ये जतन झाली आहे.';
+      document.getElementById('del_result').style.display = 'none';
+      document.getElementById('del_regNo').value = '';
+      delCurrentStudent = null;
+    } else {
+      statusEl.textContent = '❌ ' + (r && r.message ? r.message : 'Failed');
+      document.getElementById('del_confirmBtn').disabled = false;
+    }
+  });
+}
+
 function buildCategoryTableFromCounts(female, male) {
   female = female || {}; male = male || {};
   function catTotal(bucket) { return CATEGORY_LIST.reduce(function(sum,c){ return sum + (bucket[c]||0); }, 0); }
@@ -4133,7 +4239,8 @@ function renderAnalytics(r) {
   if (bEl) bEl.textContent = boys;
 }
 
-/* ==================== */
+
+
 
 function showSaveNotif(icon,title,serial,label,msg){
   var el=function(id){return document.getElementById(id);};

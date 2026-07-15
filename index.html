@@ -57,6 +57,7 @@
   <button class="navbtn" data-page="users" data-master-only="true" onclick="showPage('users',this)">👥 Users</button>
   <button class="navbtn master-only" data-page="stats" onclick="showPage('stats',this)">📊 सांख्यिकी अहवाल</button>
   <button class="navbtn master-only" data-page="maintenance" onclick="showPage('maintenance',this)">🔧 मेंटेनन्स</button>
+  <button class="navbtn master-only" data-page="classinfo" onclick="showPage('classinfo',this)">🏫 वर्ग माहिती</button>
   <button class="navbtn" data-page="teacher" onclick="showPage('teacher',this)">🏫 वर्ग शिक्षक</button>
   <span class="user-chip" id="authUserChip">User</span>
   <button class="logout-btn" onclick="logoutUser()">Logout</button>
@@ -297,7 +298,12 @@
     <div class="dcard master-only" data-page="maintenance" onclick="showPage('maintenance',this)">
       <div class="icon">🔧</div>
       <h3>मेंटेनन्स</h3>
-      <p>विद्यार्थ्यांचा वर्ग/तुकडी बदल</p>
+      <p>विद्यार्थ्यांचा वर्ग/तुकडी बदल, Delete</p>
+    </div>
+    <div class="dcard master-only" data-page="classinfo" onclick="showPage('classinfo',this)">
+      <div class="icon">🏫</div>
+      <h3>वर्ग माहिती</h3>
+      <p>वर्गनिहाय विद्यार्थी यादी व Student Diary नोंदी</p>
     </div>
     </div>
 
@@ -958,7 +964,7 @@
   </div>
 </div>
 
-<!-- ==================== CLASS TEACHER PAGE (V19.31) ==================== -->
+<!-- ==================== CLASS TEACHER PAGE (V19.32) ==================== -->
 <!-- ==================== STATISTICS REPORT PAGE (V19.19 — Super Master/Master) ==================== -->
 <div id="pg-stats" class="page">
   <div class="sec-title" style="margin-bottom:4px">📊 सांख्यिकी अहवाल (Statistics Report)</div>
@@ -1040,6 +1046,84 @@
           </div>
           <div class="fg" style="flex:0 0 auto"><button class="btn btn-gold" onclick="mntSaveChange()">💾 बदल जतन करा</button></div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px;border:2px solid #c02020">
+    <div class="card-header" style="background:rgba(192,32,32,.15)">
+      <div>
+        <h2>🗑️ विद्यार्थी Delete करा</h2>
+        <p style="color:#c02020">⚠️ ही कृती अपरिवर्तनीय आहे — विद्यार्थी यादीतून पूर्णपणे निघून जाईल (संपूर्ण माहिती DeletedStudents Sheet मध्ये स्वतंत्रपणे जतन राहील)</p>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="searchbox">
+        <label>🔍 Reg No:</label>
+        <input type="text" id="del_regNo" placeholder="रजिस्टर नंबर" onkeydown="if(event.key==='Enter'){event.preventDefault();delSearchStudent();}">
+        <button class="btn btn-orange btn-sm" onclick="delSearchStudent()">🔍 शोधा</button>
+      </div>
+      <div id="del_status" style="font-size:12.5px;margin:10px 0;color:#555"></div>
+      <div id="del_result" style="display:none">
+        <div style="font-size:15px;margin-bottom:10px">
+          <b id="del_studentName">—</b> — इयत्ता <span id="del_studentClass">—</span>,
+          Reg No: <span id="del_studentRegNo">—</span>
+        </div>
+        <p style="font-size:12.5px;color:#c02020">खात्री करण्यासाठी खाली पुन्हा हाच Reg No टाइप करा:</p>
+        <div class="frow" style="gap:10px;align-items:flex-end">
+          <div class="fg w150"><input type="text" id="del_confirmRegNo" placeholder="Reg No पुन्हा टाइप करा" oninput="delCheckConfirm()"></div>
+          <div class="fg" style="flex:0 0 auto"><button class="btn" id="del_confirmBtn" disabled style="background:#c02020;color:#fff" onclick="delConfirmDelete()">🗑️ कायमचे Delete करा</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== वर्ग माहिती PAGE (V19.32 — Super Master/Master) ==================== -->
+<div id="pg-classinfo" class="page">
+  <div class="sec-title" style="margin-bottom:10px">🏫 वर्ग माहिती</div>
+  <div class="frow" style="gap:10px;margin-bottom:14px;align-items:flex-end">
+    <div class="fg w150">
+      <label>वर्ग</label>
+      <select id="ci_class" style="padding:7px 10px;border-radius:var(--r);border:1.5px solid var(--pb);background:var(--peach);font-family:inherit;font-size:14px;width:100%">
+        <option value="">-- वर्ग --</option>
+        <option>5th</option><option>6th</option><option>7th</option>
+        <option>8th</option><option>9th</option><option>10th</option>
+      </select>
+    </div>
+    <div class="fg w120">
+      <label>तुकडी</label>
+      <select id="ci_tukdi" style="padding:7px 10px;border-radius:var(--r);border:1.5px solid var(--pb);background:var(--peach);font-family:inherit;font-size:14px;width:100%">
+        <option value="">-- तुकडी --</option>
+        <option>अ</option><option>ब</option><option>क</option><option>ड</option>
+        <option>इ</option><option>फ</option><option>ग</option><option>ह</option><option>आय</option>
+      </select>
+    </div>
+    <div class="fg" style="flex:0 0 auto"><button class="btn btn-blue" onclick="ciLoadClass()">🔍 पहा</button></div>
+  </div>
+  <div id="ci_status" style="font-size:12.5px;margin-bottom:14px;color:#555"></div>
+
+  <div id="ci_content" style="display:none">
+    <div style="margin-bottom:14px">
+      <button class="tch-tabbtn active" data-ci="students" onclick="ciShowTab('students')">👥 विद्यार्थी यादी</button>
+      <button class="tch-tabbtn" data-ci="diary" onclick="ciShowTab('diary')">📔 Student Diary नोंदी</button>
+    </div>
+
+    <div class="tch-panel active" id="cip-students">
+      <div style="overflow-x:auto">
+        <table class="hist-table">
+          <thead><tr><th>Roll</th><th>नाव</th><th>लिंग</th><th>DOB</th><th>WhatsApp / Alternate Mobile</th><th>कृती</th></tr></thead>
+          <tbody id="ci_studentsTbody"><tr><td colspan="6">वर्ग निवडून "पहा" दाबा.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="tch-panel" id="cip-diary">
+      <div style="overflow-x:auto">
+        <table class="hist-table">
+          <thead><tr><th>तारीख</th><th>विद्यार्थी</th><th>प्रकार</th><th>तपशील</th><th>नोंदवणारे (वर्ग शिक्षक)</th></tr></thead>
+          <tbody id="ci_diaryTbody"><tr><td colspan="5">वर्ग निवडून "पहा" दाबा.</td></tr></tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -2185,7 +2269,6 @@ function getPhotoUrlByRegNo(regNo) {
   <div class="snm" id="sgsMsg"></div>
   <button class="snc" onclick="closeSaveNotif()">ठीक आहे</button>
 </div>
-
 <script src="script.js"></script>
 </body>
 </html>
