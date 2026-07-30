@@ -32,7 +32,7 @@ window.androidBackPressed = function() {
 
 
 // URL persistence
-var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxjKXNII5jma3DjfDSaM5zk8ZecYKb75QEMMQRJdot_7EtkMhXFBOM4Xs6_lJ_4_mIJ/exec';
+var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbwzC8ni74uzqQkhuKbTi6lGg7diOyrTjohAO5_1134q_wtM0Hc6PklZrttaLmD5xdpl/exec';
 
 // =====================================================
 // 🔐 LOGIN + ROLE PERMISSIONS
@@ -3620,7 +3620,35 @@ function buildCategoryTableFromCounts(female, male) {
   return html;
 }
 
-// ===== Master / Super Master — Notice Board (V19.19, TargetClass — V19.34) =====
+// ===== Master / Super Master — आज वाढदिवस असलेले विद्यार्थी (V19.34) =====
+function mstLoadTodayBirthdays() {
+  var el = document.getElementById('mst_birthdaysToday');
+  if (!el) return;
+  el.innerHTML = '⏳ Load होत आहे...';
+  jsonpRequest({action:'getTodayBirthdays'}, function(r) {
+    if (!r || r.status !== 'ok') { el.innerHTML = '❌ Load Failed'; return; }
+    if (!r.data.length) { el.innerHTML = 'आज कोणत्याही विद्यार्थ्याचा वाढदिवस नाही.'; return; }
+    el.innerHTML = r.data.map(function(s) {
+      function actionLinks(rawNum) {
+        var num = (rawNum||'').toString().replace(/[^0-9]/g,'');
+        if (!num) return '';
+        var waNum = num.length === 10 ? '91' + num : num;
+        var msg = encodeURIComponent('🎂 वाढदिवसाच्या हार्दिक शुभेच्छा, ' + s.fullName + '! - श्री.गोविंदराव सक्सेरिया हायस्कूल, पाचोरा');
+        return ' &nbsp; <a href="tel:' + num + '" style="color:#90c0ff">📞 Call</a>' +
+          ' &nbsp; <a href="https://wa.me/' + waNum + '?text=' + msg + '" target="_blank" rel="noopener" style="color:#7be08a">🟢 WhatsApp</a>';
+      }
+      var links = actionLinks(s.whatsappMobile) || actionLinks(s.alternateMobile) || actionLinks(s.contact);
+      var photo = s.photoUrl ? '<img src="' + s.photoUrl + '" style="width:40px;height:40px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px">' : '🎂 ';
+      return '<div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid rgba(0,0,0,.08)">' +
+        photo + '<b>' + s.fullName + '</b>' + (s.age ? ' <span style="opacity:.7">(आज ' + s.age + ' वर्षे पूर्ण)</span>' : '') +
+        '<br><span style="font-size:12px;opacity:.75">वर्ग: ' + (s.iyatta||'—') + ' ' + (s.tukdi||'') + ' &nbsp;|&nbsp; Roll No: ' + (s.rollNo||'—') + ' &nbsp;|&nbsp; Reg No: ' + (s.regNo||'—') + '</span>' +
+        (links ? '<br>' + links : ' <br><span style="opacity:.6;font-size:12px">(मोबाईल क्रमांक नोंदवलेला नाही)</span>') +
+        '</div>';
+    }).join('');
+  });
+}
+
+
 function mstSaveNotice() {
   if (!currentUser || (currentUser.role !== 'master' && currentUser.role !== 'super')) return;
   var title = document.getElementById('mst_noticeTitle').value.trim();

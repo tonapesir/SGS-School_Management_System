@@ -155,6 +155,9 @@ function doGet(e) {
   if (p.action === "getClassList") {
     return doGetClassList(p, cb);
   }
+  if (p.action === "getTodayBirthdays") {
+    return doGetTodayBirthdays(p, cb);
+  }
   if (p.action === "getAttendance") {
     return doGetAttendance(p, cb);
   }
@@ -1127,6 +1130,43 @@ function doGetClassList(p, cb) {
       return ka < kb ? -1 : (ka > kb ? 1 : 0);
     });
     return wrap(cb, {status:"ok", data: out});
+  } catch(err) {
+    return wrap(cb, {status:"error", message:err.toString()});
+  }
+}
+
+// ----- आज वाढदिवस असलेले विद्यार्थी — संपूर्ण शाळेतील (Super Master / Master Dashboard — V19.34) -----
+function doGetTodayBirthdays(p, cb) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var today = fmt(new Date());
+    var todayMD = today.slice(5); // MM-DD
+    var todayYear = new Date().getFullYear();
+    var sh = ss.getSheetByName("Students");
+    var out = [];
+    if (sh && sh.getLastRow() > 1) {
+      var rows = sh.getRange(2, 1, sh.getLastRow()-1, 31).getValues();
+      for (var i=0;i<rows.length;i++) {
+        var r = rows[i];
+        if (!r[10] && !r[2]) continue; // रिकामी row वगळा
+        var dobStr = fmt(r[16]);
+        if (!dobStr || dobStr.slice(5) !== todayMD) continue;
+        var birthYear = parseInt(dobStr.slice(0,4), 10);
+        var age = !isNaN(birthYear) ? (todayYear - birthYear) : null;
+        out.push({
+          iyatta: r[6], tukdi: r[7], regNo: r[2], studentId: r[3], rollNo: r[9],
+          fullName: r[10], dob: dobStr, age: age,
+          whatsappMobile: r[27]||"", alternateMobile: r[28]||"", contact: r[24]||"",
+          photoUrl: r[26]||""
+        });
+      }
+    }
+    out.sort(function(a,b){
+      var ka = (a.iyatta||"").toString()+"|"+(a.tukdi||"").toString();
+      var kb = (b.iyatta||"").toString()+"|"+(b.tukdi||"").toString();
+      return ka < kb ? -1 : (ka > kb ? 1 : 0);
+    });
+    return wrap(cb, {status:"ok", data: out, today: today});
   } catch(err) {
     return wrap(cb, {status:"error", message:err.toString()});
   }
