@@ -307,12 +307,23 @@
     </div>
     </div>
 
+  <!-- ===== आज वाढदिवस असलेले विद्यार्थी (Super Master / Master) — V19.34 ===== -->
+  <div class="card master-only" style="margin-bottom:16px">
+    <div class="card-header"><div>🎂 आज वाढदिवस असलेले विद्यार्थी</div></div>
+    <div class="card-body">
+      <div id="mst_birthdaysToday" style="font-size:13px">⏳ Load होत आहे...</div>
+    </div>
+  </div>
+
   <!-- ===== वर्ग शिक्षकांना सूचना (Super Master / Master) — V19.19 ===== -->
   <div class="card master-only" style="margin-bottom:16px">
     <div class="card-header"><div>📢 सर्व वर्ग शिक्षकांना सूचना पाठवा</div></div>
     <div class="card-body">
       <div class="frow" style="gap:10px;flex-wrap:wrap;align-items:flex-end">
         <div class="fg" style="min-width:220px;flex:1"><label>शीर्षक</label><input id="mst_noticeTitle" placeholder="सूचनेचे शीर्षक"></div>
+        <div class="fg" style="min-width:170px"><label>कोणासाठी</label>
+          <select id="mst_noticeTargetClass"><option value="">सर्व वर्ग</option></select>
+        </div>
         <div class="fg" style="flex:0 0 auto"><button class="btn btn-gold" onclick="mstSaveNotice()">📢 सूचना पाठवा</button></div>
       </div>
       <div class="fg" style="margin-top:10px">

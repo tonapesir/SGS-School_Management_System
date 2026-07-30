@@ -32,7 +32,7 @@ window.androidBackPressed = function() {
 
 
 // URL persistence
-var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxjJgjf7CnjzcQHe98ui7umlS2nMNxaaFn-SjckydvPvmjzw4lZveF88MR32XlOTgpx/exec';
+var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbyGwktssvaGFtIu21cyyJ_aiO1ctP1JyIJjeVd7uveC9PHPRG7lO5jXZROCNLgd42mE/exec';
 
 // =====================================================
 // 🔐 LOGIN + ROLE PERMISSIONS
@@ -3250,6 +3250,7 @@ showPage = function(name, btn) {
     loadDashboardStats();
     loadAnalytics();
     if (currentUser && (currentUser.role === 'master' || currentUser.role === 'super')) mstLoadRecentNotices();
+    if (currentUser && (currentUser.role === 'master' || currentUser.role === 'super')) mstLoadTodayBirthdays();
   }
   if (name === 'stats') {
     mstLoadStatsReport();
@@ -3619,21 +3620,23 @@ function buildCategoryTableFromCounts(female, male) {
   return html;
 }
 
-// ===== Master / Super Master — Notice Board (V19.19) =====
+// ===== Master / Super Master — Notice Board (V19.19, TargetClass — V19.34) =====
 function mstSaveNotice() {
   if (!currentUser || (currentUser.role !== 'master' && currentUser.role !== 'super')) return;
   var title = document.getElementById('mst_noticeTitle').value.trim();
   var msg = document.getElementById('mst_noticeMsg').value.trim();
+  var targetClass = document.getElementById('mst_noticeTargetClass').value;
   var statusEl = document.getElementById('mst_noticeStatus');
   if (!title || !msg) { statusEl.textContent = '⚠️ शीर्षक व तपशील दोन्ही लिहा.'; return; }
-  var data = { action:'saveNotice', title:title, message:msg, targetClass:'',
+  var data = { action:'saveNotice', title:title, message:msg, targetClass:targetClass,
     postedBy: (currentUser.label||currentUser.username), requesterUser: currentUser.username, requesterRole: currentUser.role };
   statusEl.textContent = '⏳ पाठवत आहे...';
   smartSave(data, function(r) {
     if (r && r.status === 'ok') {
-      statusEl.textContent = '✅ सूचना सर्व वर्ग शिक्षकांना पाठवली.';
+      statusEl.textContent = targetClass ? ('✅ सूचना ' + targetClass.replace('|',' ') + ' वर्गाच्या शिक्षकाला पाठवली.') : '✅ सूचना सर्व वर्ग शिक्षकांना पाठवली.';
       document.getElementById('mst_noticeTitle').value = '';
       document.getElementById('mst_noticeMsg').value = '';
+      document.getElementById('mst_noticeTargetClass').value = '';
       mstLoadRecentNotices();
     } else {
       statusEl.textContent = '❌ ' + (r && r.message ? r.message : 'Failed');
@@ -3641,13 +3644,33 @@ function mstSaveNotice() {
   });
 }
 
+// वर्ग शिक्षकांना लक्ष्य करण्यासाठी Students sheet मध्ये प्रत्यक्षात असलेल्या इयत्ता-तुकडी जोड्यांची यादी लोड करते
+var mstClassListLoaded = false;
+function mstLoadClassListForNotice() {
+  if (mstClassListLoaded) return;
+  jsonpRequest({action:'getClassList'}, function(r) {
+    var sel = document.getElementById('mst_noticeTargetClass');
+    if (!sel) return;
+    if (!r || r.status !== 'ok' || !r.data.length) return;
+    mstClassListLoaded = true;
+    r.data.forEach(function(c) {
+      var opt = document.createElement('option');
+      opt.value = c.iyatta + '|' + c.tukdi;
+      opt.textContent = c.iyatta + (c.tukdi ? (' ' + c.tukdi) : '');
+      sel.appendChild(opt);
+    });
+  });
+}
+
 function mstLoadRecentNotices() {
+  mstLoadClassListForNotice();
   jsonpRequest({action:'getNotices', limit: 15}, function(r) {
     var el = document.getElementById('mst_recentNotices');
     if (!el) return;
     if (!r || r.status !== 'ok' || !r.data.length) { el.innerHTML = 'अद्याप कोणतीही सूचना पाठवलेली नाही.'; return; }
     el.innerHTML = r.data.map(function(n) {
-      return '<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(0,0,0,.08)"><b>' + n.title + '</b> <span style="opacity:.6;font-size:11px">(' + tchFmtDate(n.date) + ' — ' + n.postedBy + ')</span><br>' + n.message + '</div>';
+      var tcLabel = n.targetClass ? n.targetClass.replace('|',' ') : 'सर्व वर्ग';
+      return '<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(0,0,0,.08)"><b>' + n.title + '</b> <span style="opacity:.6;font-size:11px">(' + tchFmtDate(n.date) + ' — ' + n.postedBy + ' — 🎯 ' + tcLabel + ')</span><br>' + n.message + '</div>';
     }).join('');
   });
 }
