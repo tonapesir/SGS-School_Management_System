@@ -32,7 +32,7 @@ window.androidBackPressed = function() {
 
 
 // URL persistence
-var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbynx1HVv30ly3Ff2A9lL24lBix8DjGcfcPlOw5z31N83_4xyKbHRdPEfvt0G9RDDkVb/exec';
+var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbyGwktssvaGFtIu21cyyJ_aiO1ctP1JyIJjeVd7uveC9PHPRG7lO5jXZROCNLgd42mE/exec';
 
 // =====================================================
 // 🔐 LOGIN + ROLE PERMISSIONS
@@ -4123,17 +4123,26 @@ function tchLoadFeesForStudent() {
 
 function tchRenderStudentFeeStat(regNo) {
   var s = tchRoster.filter(function(x){ return String(x.regNo) === String(regNo); })[0] || {};
+  // tchFeesData येते already नवीन-ते-जुने (descending date) क्रमाने — त्यामुळे entries[0] म्हणजे सर्वात अलीकडची (latest cumulative) नोंद
   var entries = tchFeesData.filter(function(f){ return String(f.regNo) === String(regNo); });
-  var paid = entries.reduce(function(sum,f){ return sum + (parseFloat(f.amountPaid)||0); }, 0);
-  var pending = Math.max(0, tchTotalFeePerStudent - paid);
+  var latest = entries[0];
+  var paid = latest ? (parseFloat(latest.feePaid)||0) : 0;
+  var pending = latest ? (parseFloat(latest.pendingFee)||0) : tchTotalFeePerStudent;
   document.getElementById('tch_studentFeeName').textContent = (s.rollNo||'') + ' - ' + (s.fullName||'');
   document.getElementById('tch_studentFeePaid').textContent = '₹' + paid;
   document.getElementById('tch_studentFeePending').textContent = '₹' + pending;
   document.getElementById('tch_totalFeeAmt').textContent = tchTotalFeePerStudent;
   var hist = document.getElementById('tch_studentFeeHistory');
-  hist.innerHTML = entries.length ? ('<b>जमा इतिहास:</b><br>' + entries.map(function(f) {
-    return tchFmtDate(f.date) + ' — ₹' + f.amountPaid + ' (' + (f.enteredBy||'') + ')';
-  }).join('<br>')) : 'अद्याप कोणतीही जमा नोंद नाही.';
+  // इतिहासात प्रत्येक installment ची स्वतंत्र रक्कम दाखवण्यासाठी, cumulative FeePaid मधून क्रमवार फरक काढतो
+  var asc = entries.slice().reverse();
+  var prevPaid = 0;
+  var lines = asc.map(function(f) {
+    var cum = parseFloat(f.feePaid) || 0;
+    var installment = cum - prevPaid;
+    prevPaid = cum;
+    return tchFmtDate(f.date) + ' — ₹' + installment + ' (' + (f.updatedBy||'') + ')';
+  });
+  hist.innerHTML = lines.length ? ('<b>जमा इतिहास:</b><br>' + lines.join('<br>')) : 'अद्याप कोणतीही जमा नोंद नाही.';
 }
 
 function tchSaveFees() {
@@ -4144,7 +4153,7 @@ function tchSaveFees() {
   if (!amount || parseFloat(amount) <= 0) { document.getElementById('tch_feesEntryStatus').textContent = '⚠️ जमा रक्कम बरोबर टाका.'; return; }
   var data = { action:'saveFees', regNo: regNo, studentId: s.studentId||'', fullName: s.fullName||'',
     iyatta: currentUser.iyatta, tukdi: currentUser.tukdi, teacherIyatta: currentUser.iyatta, teacherTukdi: currentUser.tukdi,
-    amountPaid: amount, enteredBy: currentUser.username,
+    acYear: s.acYear||'', amountPaid: amount, enteredBy: currentUser.username,
     requesterUser: currentUser.username, requesterRole: currentUser.role };
   document.getElementById('tch_feesEntryStatus').textContent = '⏳ Saving...';
   smartSave(data, function(r) {
@@ -4164,18 +4173,21 @@ function tchLoadFeesTable(reselectRegNo) {
     if (!r || r.status !== 'ok') { tbody.innerHTML = '<tr><td colspan="4">Load Failed</td></tr>'; return; }
     tchFeesData = r.data || [];
     tchTotalFeePerStudent = r.totalFeePerStudent || 1000;
-    var classTotal = tchFeesData.reduce(function(sum,f){ return sum + (parseFloat(f.amountPaid)||0); }, 0);
-    document.getElementById('tch_classFeesTotal').textContent = '₹' + classTotal;
+    var classTotal = 0;
     if (!tchRoster.length) { tbody.innerHTML = '<tr><td colspan="4">विद्यार्थी यादी उपलब्ध नाही.</td></tr>'; }
     else {
       tbody.innerHTML = tchRoster.map(function(s) {
+        // tchFeesData descending order मध्ये असल्याने entries[0] = त्या विद्यार्थ्याची सर्वात अलीकडची नोंद
         var entries = tchFeesData.filter(function(f){ return String(f.regNo) === String(s.regNo); });
-        var paid = entries.reduce(function(sum,f){ return sum + (parseFloat(f.amountPaid)||0); }, 0);
-        var pending = Math.max(0, tchTotalFeePerStudent - paid);
+        var latest = entries[0];
+        var paid = latest ? (parseFloat(latest.feePaid)||0) : 0;
+        var pending = latest ? (parseFloat(latest.pendingFee)||0) : tchTotalFeePerStudent;
+        classTotal += paid;
         var pendingStyle = pending > 0 ? 'color:#ff9090;font-weight:700' : 'color:#7be08a';
         return '<tr><td>' + (s.rollNo||'') + '</td><td>' + s.fullName + '</td><td>₹' + paid + '</td><td style="' + pendingStyle + '">₹' + pending + '</td></tr>';
       }).join('');
     }
+    document.getElementById('tch_classFeesTotal').textContent = '₹' + classTotal;
     if (reselectRegNo) tchRenderStudentFeeStat(reselectRegNo);
   });
 }
