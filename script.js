@@ -32,7 +32,7 @@ window.androidBackPressed = function() {
 
 
 // URL persistence
-var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbwzC8ni74uzqQkhuKbTi6lGg7diOyrTjohAO5_1134q_wtM0Hc6PklZrttaLmD5xdpl/exec';
+var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbyvbVxje-K_dpU14bTh1DBvrjUaXtOCF2D96B4K3zbp8HjPQQF--huITsSJ6OhTXcpK/exec';
 
 // =====================================================
 // 🔐 LOGIN + ROLE PERMISSIONS
