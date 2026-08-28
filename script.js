@@ -1236,6 +1236,9 @@ function proceedSaveStudent(pfx,data){
     if(r.status==='saved'||r.status==='ok'||r.status==='sent') {
       data._rowIndex = r.rowIndex || data._rowIndex || 0;
       updateCacheEntry(data);
+      if (pfx === 's' && typeof showStudentSaveNotif === 'function') {
+        showStudentSaveNotif(data.regNo, data.firstName, r.mode !== 'updated');
+      }
     }
   });
 }
@@ -1294,6 +1297,9 @@ function proceedUpdateStudent(pfx,data,savedRow){
       rowTracker[pfx]=null;
       var ub=document.getElementById('s_updateBtn'); if(ub) ub.style.display='none';
       var ri=document.getElementById('s_rowInfo'); if(ri) ri.textContent='';
+      if (pfx === 's' && typeof showStudentSaveNotif === 'function') {
+        showStudentSaveNotif(data.regNo, data.firstName, false);
+      }
     } else {
       showStatus(pfx,'❌ Update failed: '+(r.message||r.status||'unknown'),'err');
     }
@@ -4314,12 +4320,34 @@ function showSaveNotif(icon,title,serial,label,msg){
   var s=el('sgsSerial');
   if(serial){s.style.display='block';s.textContent=(label||'क्र.')+' : '+serial;}
   else s.style.display='none';
-  el('sgsMsg').textContent=msg||'';
+  // msg मध्ये <br> टॅग असल्यास ओळी वेगळ्या दिसाव्यात म्हणून innerHTML वापरतो (फक्त आपणच पुरवलेला मजकूर, वापरकर्ता-इनपुट नाही)
+  el('sgsMsg').innerHTML=msg||'';
   el('sgsNotifBg').style.display='block';
   el('sgsNotif').style.display='block';
   setTimeout(function(){el('sgsNotif').classList.add('show');},20);
   clearTimeout(window._sgsNT);
   window._sgsNT=setTimeout(closeSaveNotif,5000);
+}
+
+// ===== विद्यार्थी माहिती Save/Update झाल्यावर स्क्रीनवर पुष्टीकरण संदेश (रजिस्टर क्र. + नाव + नवीन/अद्यावत) =====
+function escSNHtml(s){
+  return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function showStudentSaveNotif(regNo, name, isNew){
+  var regTxt = regNo ? String(regNo).trim() : '-';
+  var nameTxt = name ? String(name).trim() : '-';
+  var actionLine = isNew
+    ? 'यांची माहिती नव्याने नोंदवल्या गेली आहे.'
+    : 'यांची माहिती अद्यावत केली गेली आहे.';
+  var msg = 'रजिस्टर क्रमांक : ' + escSNHtml(regTxt) + '<br>' +
+            'विद्यार्थ्याचे नाव : ' + escSNHtml(nameTxt) + '<br>' +
+            actionLine;
+  showSaveNotif(
+    isNew ? '🆕' : '✅',
+    isNew ? 'नवीन नोंदणी झाली!' : 'माहिती Update झाली!',
+    '', '',
+    msg
+  );
 }
 function showSaveError(msg){
   showSaveNotif('❌','Error!','','',msg||'Save झाले नाही.');
