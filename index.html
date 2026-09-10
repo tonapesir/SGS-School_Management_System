@@ -1201,6 +1201,8 @@
         <div class="rp-field-row"><label><input type="checkbox" class="rp-field-chk" data-key="whatsappMobile" data-label="WhatsApp Mobile No"> WhatsApp Mobile No</label><input type="number" class="rp-field-order" min="1" max="20" value="13"></div>
         <div class="rp-field-row"><label><input type="checkbox" class="rp-field-chk" data-key="category" data-label="Category"> Category</label><input type="number" class="rp-field-order" min="1" max="20" value="14"></div>
         <div class="rp-field-row"><label><input type="checkbox" class="rp-field-chk" data-key="minority" data-label="Minority"> Minority</label><input type="number" class="rp-field-order" min="1" max="20" value="15"></div>
+        <div class="rp-field-row"><label><input type="checkbox" class="rp-field-chk" data-key="feePaid" data-label="जमा फी (₹)"> जमा फी (₹)</label><input type="number" class="rp-field-order" min="1" max="20" value="16"></div>
+        <div class="rp-field-row"><label><input type="checkbox" class="rp-field-chk" data-key="feePending" data-label="थकीत फी (₹)"> थकीत फी (₹)</label><input type="number" class="rp-field-order" min="1" max="20" value="17"></div>
       </div>
     </div>
   </div>
@@ -1226,6 +1228,14 @@
             <option value="girlsfirst">मुली प्रथम, मुलं नंतर</option>
             <option value="boysfirst">मुलं प्रथम, मुली नंतर</option>
             <option value="name">नावानुसार (अ ते ज्ञ)</option>
+          </select>
+        </div>
+        <div class="fg w180">
+          <label>फी स्थिती फिल्टर</label>
+          <select id="rp_feeFilter">
+            <option value="all">सर्व विद्यार्थी</option>
+            <option value="paid">💰 फक्त फी दिलेले</option>
+            <option value="unpaid">⚠️ फक्त फी न दिलेले</option>
           </select>
         </div>
         <div class="fg" style="flex:0 0 auto"><button class="btn btn-blue" onclick="rpGenerate()">📋 यादी तयार करा</button></div>

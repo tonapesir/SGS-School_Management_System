@@ -4428,6 +4428,24 @@ function rpEnsureStudents(cb) {
   });
 }
 
+// सर्व वर्गांची Fees माहिती (regNo नुसार सर्वात अलीकडची cumulative नोंद) मिळवा — फी फिल्टर/कॉलमसाठी
+function rpEnsureFees(cb) {
+  var statusEl = document.getElementById('rp_status');
+  if (statusEl) statusEl.textContent = '⏳ फी माहिती Load होत आहे...';
+  jsonpRequest({action:'getFees'}, function(r) {
+    var total = (r && r.totalFeePerStudent) || 0;
+    var map = {};
+    if (r && r.status === 'ok' && Array.isArray(r.data)) {
+      // doGetFees आधीच नवीन-ते-जुने क्रमाने पाठवते — त्यामुळे प्रत्येक regNo ची पहिली भेटलेली नोंद = सर्वात अलीकडची
+      r.data.forEach(function(f) {
+        var key = String(f.regNo || '').trim().toLowerCase();
+        if (key && !map[key]) map[key] = f;
+      });
+    }
+    cb(map, total);
+  });
+}
+
 // मुली प्रथम / मुलं प्रथम / नावानुसार / जसे आहे तसे — क्रमवारी
 function rpSortStudents(list, order) {
   function byReg(a, b) { return String(a.regNo||'').localeCompare(String(b.regNo||''), undefined, {numeric:true}); }
@@ -4492,6 +4510,10 @@ function rpGenerate() {
   if (!fields.length) { statusEl.textContent = '⚠️ किमान एक Column Field निवडा.'; return; }
 
   var sortOrder = document.getElementById('rp_sortOrder').value;
+  var feeFilterEl = document.getElementById('rp_feeFilter');
+  var feeFilter = feeFilterEl ? feeFilterEl.value : 'all'; // all | paid | unpaid
+  var needsFees = feeFilter !== 'all' || fields.some(function(f){ return f.key === 'feePaid' || f.key === 'feePending'; });
+
   statusEl.textContent = '⏳ यादी तयार होत आहे...';
   pdfBtn.disabled = true;
 
@@ -4501,18 +4523,37 @@ function rpGenerate() {
              selTukdis.indexOf(String(s.tukdi||'').trim()) !== -1;
     });
 
-    var groups = rpGroupByClass(rows, sortOrder);
-    rptLastGroups = groups;
-    rptLastFields = fields;
-    rpRenderPreview(groups, fields);
+    function finish(finalRows) {
+      var groups = rpGroupByClass(finalRows, sortOrder);
+      rptLastGroups = groups;
+      rptLastFields = fields;
+      rpRenderPreview(groups, fields);
 
-    if (!rows.length) {
-      statusEl.textContent = '⚠️ या निवडीनुसार एकही विद्यार्थी सापडला नाही.';
-      pdfBtn.disabled = true;
-    } else {
-      statusEl.textContent = '✅ एकूण ' + rows.length + ' विद्यार्थी सापडले (' + groups.length + ' वर्ग/तुकडी गट).';
-      pdfBtn.disabled = false;
+      if (!finalRows.length) {
+        statusEl.textContent = '⚠️ या निवडीनुसार एकही विद्यार्थी सापडला नाही.';
+        pdfBtn.disabled = true;
+      } else {
+        statusEl.textContent = '✅ एकूण ' + finalRows.length + ' विद्यार्थी सापडले (' + groups.length + ' वर्ग/तुकडी गट).';
+        pdfBtn.disabled = false;
+      }
     }
+
+    if (!needsFees) { finish(rows); return; }
+
+    rpEnsureFees(function(feeMap, totalFee) {
+      var merged = rows.map(function(s) {
+        var key = String(s.regNo||'').trim().toLowerCase();
+        var f = feeMap[key];
+        var copy = {};
+        for (var k in s) copy[k] = s[k];
+        copy.feePaid = f ? (parseFloat(f.feePaid)||0) : 0;
+        copy.feePending = f ? (parseFloat(f.pendingFee)||0) : totalFee;
+        return copy;
+      });
+      if (feeFilter === 'paid') merged = merged.filter(function(s){ return s.feePaid > 0; });
+      else if (feeFilter === 'unpaid') merged = merged.filter(function(s){ return s.feePaid <= 0; });
+      finish(merged);
+    });
   });
 }
 
@@ -4636,7 +4677,24 @@ function rpExportPDF() {
       })
       .catch(function(err) { finishExport(err); });
   }
-  renderNext();
+  // ===== पहिल्या पानाचा फॉन्ट/आकार चुकीचा (मोठा/वेगळा) येण्याचे कारण: Devanagari वेब-फॉन्ट (Noto Sans/Mukta)
+  //       html2canvas च्या पहिल्या capture च्या आधी पूर्ण Load झालेला नसतो — दुसऱ्या पानापर्यंत तो Load होऊन
+  //       बरोबर दिसतो. त्यामुळे सर्व फॉन्ट पूर्ण Load झाल्याची खात्री करूनच capture सुरू करतो. =====
+  function startRenderingWhenFontsReady() {
+    function go() { requestAnimationFrame(function(){ requestAnimationFrame(renderNext); }); }
+    if (document.fonts && document.fonts.ready) {
+      Promise.all([
+        document.fonts.load('400 12pt "Noto Sans Devanagari"'),
+        document.fonts.load('700 16pt "Noto Sans Devanagari"'),
+        document.fonts.load('400 12pt "Mukta"'),
+        document.fonts.load('700 16pt "Mukta"'),
+        document.fonts.ready
+      ]).then(go).catch(go);
+    } else {
+      go();
+    }
+  }
+  startRenderingWhenFontsReady();
 }
 function showSaveError(msg){
   showSaveNotif('❌','Error!','','',msg||'Save झाले नाही.');
