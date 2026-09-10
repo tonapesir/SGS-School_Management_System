@@ -41,6 +41,9 @@ body.role-teacher .dcard:not([data-page="teacher"]){display:none!important}
 body.role-teacher .master-only,
 body.role-teacher .edit-only{display:none!important}
 body.role-teacher .tch-back-btn{display:inline-block!important}
+/* रिपोर्ट पान — Class Teacher लाही उपलब्ध असावे (Super/Master प्रमाणेच) */
+body.role-teacher .navbtn[data-page="report"]{display:inline-block!important}
+body.role-teacher .dcard[data-page="report"]{display:block!important}
 .tch-tabbtn{background:var(--navy3);border:1px solid var(--navy2);color:var(--txt);padding:9px 14px;border-radius:20px;cursor:pointer;font-size:12.5px;font-weight:600;font-family:inherit;margin:0 6px 8px 0}
 .tch-tabbtn.active{background:var(--gold);color:#1a1200;border-color:var(--gold)}
 .tch-panel{display:none}

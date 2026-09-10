@@ -58,6 +58,7 @@
   <button class="navbtn master-only" data-page="stats" onclick="showPage('stats',this)">📊 सांख्यिकी अहवाल</button>
   <button class="navbtn master-only" data-page="maintenance" onclick="showPage('maintenance',this)">🔧 मेंटेनन्स</button>
   <button class="navbtn master-only" data-page="classinfo" onclick="showPage('classinfo',this)">🏫 वर्ग माहिती</button>
+  <button class="navbtn master-only" data-page="report" onclick="showPage('report',this);rpOnTypeChange();">📑 रिपोर्ट</button>
   <button class="navbtn" data-page="teacher" onclick="showPage('teacher',this)">🏫 वर्ग शिक्षक</button>
   <span class="user-chip" id="authUserChip">User</span>
   <button class="logout-btn" onclick="logoutUser()">Logout</button>
@@ -304,6 +305,11 @@
       <div class="icon">🏫</div>
       <h3>वर्ग माहिती</h3>
       <p>वर्गनिहाय विद्यार्थी यादी व Student Diary नोंदी</p>
+    </div>
+    <div class="dcard master-only" data-page="report" onclick="showPage('report',this);rpOnTypeChange();">
+      <div class="icon">📑</div>
+      <h3>रिपोर्ट</h3>
+      <p>जात/प्रवर्ग/वर्ग/फी/मोबाईल/पत्ता/लिंग निहाय यादी — A4 PDF Export</p>
     </div>
     </div>
 
@@ -737,7 +743,7 @@
       <div class="div"></div>
       <div class="sec-title">उपस्थिती माहिती / ATTENDANCE DETAILS</div>
       <div class="frow">
-        <div class="fg w180"><label>शै.वर्ष (Academic Year)</label><select id="at_stxt2" value="2025-26">-</option><option>2026-27</option><option>2027-28</option><option>2028-29</option></select></div>
+        <div class="fg w180"><label>शै.वर्ष (Academic Year)</label><select id="at_stxt2" value="2026-27">-</option><option>2027-28</option><option>2028-29</option><option>2029-30</option></select></div>
         <div class="fg w150"><label>प्रमाणपत्र दिनांक</label><input type="date" id="at_stxt57"></div>
         <div class="fg wf">
           <label>उद्देश (Purpose)</label>
@@ -1136,6 +1142,87 @@
           <tbody id="ci_diaryTbody"><tr><td colspan="5">वर्ग निवडून "पहा" दाबा.</td></tr></tbody>
         </table>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== रिपोर्ट PAGE (Super Master / Master / Class Teacher) ==================== -->
+<div id="pg-report" class="page">
+  <div class="sec-title" style="margin-bottom:10px">📑 रिपोर्ट</div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-body">
+      <div class="frow" style="gap:10px;flex-wrap:wrap;align-items:flex-end">
+        <div class="fg w220">
+          <label>रिपोर्ट प्रकार</label>
+          <select id="rp_type" onchange="rpOnTypeChange()">
+            <option value="caste">1. जातनिहाय विद्यार्थी यादी</option>
+            <option value="category">2. जात प्रवर्गनिहाय विद्यार्थी यादी</option>
+            <option value="class">3. वर्गनिहाय विद्यार्थी यादी</option>
+            <option value="feepaid">4. फी दिलेल्या विद्यार्थ्यांची यादी</option>
+            <option value="feedue">5. फी न दिलेल्या विद्यार्थ्यांची यादी</option>
+            <option value="mobile">6. मोबाईल क्रमांकासहित विद्यार्थ्यांची यादी</option>
+            <option value="address">7. पत्त्यासह विद्यार्थ्यांची यादी</option>
+            <option value="minority">8. अल्पसंख्यांक विद्यार्थ्यांची यादी</option>
+            <option value="gender">9. लिंगानुसार विद्यार्थ्यांची यादी</option>
+          </select>
+        </div>
+
+        <div class="fg w150" id="rp_casteWrap" style="display:none">
+          <label>जात (रिकामे ठेवल्यास सर्व)</label>
+          <input type="text" id="rp_casteVal" placeholder="उदा. मराठा">
+        </div>
+        <div class="fg w150" id="rp_categoryWrap" style="display:none">
+          <label>प्रवर्ग निवडा</label>
+          <select id="rp_categoryVal">
+            <option value="">-- सर्व --</option>
+            <option>SC</option><option>ST</option><option>VJA</option>
+            <option>NT B</option><option>NT C</option><option>NT D</option>
+            <option>SEBC</option><option>SBC</option><option>OBC</option><option>Gen</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="frow" style="gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:12px">
+        <div class="fg w120">
+          <label>वर्ग फिल्टर</label>
+          <select id="rp_filterClass">
+            <option value="">-- सर्व वर्ग --</option>
+            <option>5th</option><option>6th</option><option>7th</option>
+            <option>8th</option><option>9th</option><option>10th</option>
+          </select>
+        </div>
+        <div class="fg w100">
+          <label>तुकडी फिल्टर</label>
+          <select id="rp_filterTukdi">
+            <option value="">-- सर्व --</option>
+            <option>अ</option><option>ब</option><option>क</option><option>ड</option>
+            <option>इ</option><option>फ</option><option>ग</option><option>ह</option><option>आय</option>
+          </select>
+        </div>
+        <div class="fg w220">
+          <label>क्रम (Order)</label>
+          <select id="rp_sortOrder">
+            <option value="asis">जसे आहे तसे (Reg No क्रमाने)</option>
+            <option value="girlsfirst">मुली प्रथम, मुलं नंतर</option>
+            <option value="boysfirst">मुलं प्रथम, मुली नंतर</option>
+            <option value="name">नावानुसार (अ ते ज्ञ)</option>
+          </select>
+        </div>
+        <div class="fg" style="flex:0 0 auto"><button class="btn btn-blue" onclick="rpGenerate()">📋 यादी तयार करा</button></div>
+        <div class="fg" style="flex:0 0 auto"><button class="btn btn-green" id="rp_pdfBtn" onclick="rpExportPDF()" disabled>📥 A4 PDF Export</button></div>
+      </div>
+      <div id="rp_status" style="font-size:12.5px;margin-top:10px;color:#555"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><div id="rp_resultTitle">रिपोर्ट</div></div>
+    <div class="card-body" style="overflow-x:auto">
+      <table class="hist-table" id="rp_previewTable">
+        <thead><tr id="rp_theadRow"><th>अ.क्र.</th><th>विद्यार्थ्याचे नाव</th><th>रजिस्टर क्रमांक</th><th>वर्ग</th><th>लिंग</th></tr></thead>
+        <tbody id="rp_tbody"><tr><td colspan="5">वरील पर्याय निवडून "यादी तयार करा" दाबा.</td></tr></tbody>
+      </table>
     </div>
   </div>
 </div>

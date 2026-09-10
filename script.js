@@ -46,11 +46,11 @@ var AUTH_USERS = {
 };
 var currentUser = null;
 var USER_ALLOWED_PAGES = {
-  master: ['dashboard','student','lc','bonafide','attendance','search','history','users','profile','stats','maintenance','classinfo'],
+  master: ['dashboard','student','lc','bonafide','attendance','search','history','users','profile','stats','maintenance','classinfo','report'],
   deo:    ['student','search','history','users','profile'],
   cert:   ['bonafide','attendance','search','history','users','profile'],
-  super:  ['dashboard','student','lc','bonafide','attendance','search','history','users','profile','stats','maintenance','classinfo'],
-  teacher:['teacher','profile']
+  super:  ['dashboard','student','lc','bonafide','attendance','search','history','users','profile','stats','maintenance','classinfo','report'],
+  teacher:['teacher','profile','report']
 };
 var CERT_EDITABLE_FIELDS = {
   bf: ['bf_regNo','bf_stxt2','bf_stxt57','bf_stxt3','bf_stxt3_sel','bf_stxt6'],
@@ -267,6 +267,7 @@ function applyFormPermissions() {
     if (el.id.indexOf('prof_') === 0) { el.disabled=false; el.classList.remove('locked-input'); return; }
     if (el.id.indexOf('pwd_') === 0) { el.disabled=false; el.classList.remove('locked-input'); return; }
     if (el.id.indexOf('tch_') === 0) { el.disabled=false; el.classList.remove('locked-input'); return; }
+    if (el.id.indexOf('rp_') === 0) { el.disabled=false; el.classList.remove('locked-input'); return; }
     if (el.id.indexOf('um_') === 0) {
       var canManageUsers = currentUser.role === 'super';
       el.disabled = !canManageUsers;
@@ -4348,6 +4349,284 @@ function showStudentSaveNotif(regNo, name, isNew){
     '', '',
     msg
   );
+}
+
+// =====================================================
+// 📑 REPORT PAGE — जात/प्रवर्ग/वर्ग/फी/मोबाईल/पत्ता/अल्पसंख्यांक/लिंग निहाय याद्या + A4 PDF Export
+// =====================================================
+var rptLastRows = [];   // शेवटची तयार झालेली यादी (PDF export साठी)
+var rptLastMeta = { extraCols: [], title: '' };
+
+function escRpHtml(s) {
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// दाखवायचा फक्त हवा तो selector — रिपोर्ट प्रकारानुसार
+function rpOnTypeChange() {
+  var t = document.getElementById('rp_type').value;
+  document.getElementById('rp_casteWrap').style.display = (t === 'caste') ? '' : 'none';
+  document.getElementById('rp_categoryWrap').style.display = (t === 'category') ? '' : 'none';
+}
+
+// संपूर्ण शाळेची विद्यार्थी यादी मिळवा — Cache असल्यास तीच वापरा, नाहीतर Server वरून आणा
+function rpEnsureStudents(cb) {
+  if (studentCache.loaded && studentCache.data.length > 0) { cb(studentCache.data); return; }
+  var statusEl = document.getElementById('rp_status');
+  if (statusEl) statusEl.textContent = '⏳ विद्यार्थी माहिती Load होत आहे...';
+  fetchRequest({action:'getAll'}, function(r) {
+    if (r && r.status === 'ok' && Array.isArray(r.data)) {
+      studentCache.data = r.data;
+      studentCache.loaded = true;
+      studentCache.loadedAt = new Date();
+      buildCacheIndex();
+      saveCacheToStorage();
+      updateCacheStatusBar();
+      cb(r.data);
+    } else {
+      if (statusEl) statusEl.textContent = '❌ विद्यार्थी माहिती Load करता आली नाही. URL/Internet तपासा.';
+      cb([]);
+    }
+  });
+}
+
+// सर्व वर्गांची Fees माहिती (regNo नुसार सर्वात अलीकडची cumulative नोंद) मिळवा
+function rpEnsureFees(cb) {
+  jsonpRequest({action:'getFees'}, function(r) {
+    var total = (r && r.totalFeePerStudent) || 0;
+    var map = {};
+    if (r && r.status === 'ok' && Array.isArray(r.data)) {
+      // doGetFees आधीच नवीन-ते-जुने क्रमाने पाठवते — त्यामुळे प्रत्येक regNo ची पहिली भेटलेली नोंद = सर्वात अलीकडची
+      r.data.forEach(function(f) {
+        var key = String(f.regNo || '').trim().toLowerCase();
+        if (key && !map[key]) map[key] = f;
+      });
+    }
+    cb(map, total);
+  });
+}
+
+// मुली प्रथम / मुलं प्रथम / नावानुसार / जसे आहे तसे — क्रमवारी
+function rpSortStudents(list, order) {
+  function byReg(a, b) {
+    return String(a.regNo || '').localeCompare(String(b.regNo || ''), undefined, {numeric:true});
+  }
+  function byName(a, b) {
+    return String(a.firstName || '').localeCompare(String(b.firstName || ''), 'mr');
+  }
+  if (order === 'name') {
+    var allN = list.slice(); allN.sort(byName); return allN;
+  }
+  if (order === 'girlsfirst' || order === 'boysfirst') {
+    var girls = list.filter(function(s){ return (s.gender||'').toLowerCase()==='female'; }).sort(byReg);
+    var boys  = list.filter(function(s){ return (s.gender||'').toLowerCase()==='male'; }).sort(byReg);
+    var others= list.filter(function(s){ var g=(s.gender||'').toLowerCase(); return g!=='female'&&g!=='male'; }).sort(byReg);
+    return order === 'girlsfirst' ? girls.concat(boys, others) : boys.concat(girls, others);
+  }
+  var allR = list.slice(); allR.sort(byReg); return allR;
+}
+
+function rpGenerate() {
+  var type = document.getElementById('rp_type').value;
+  var filterClass = document.getElementById('rp_filterClass').value;
+  var filterTukdi = document.getElementById('rp_filterTukdi').value;
+  var sortOrder = document.getElementById('rp_sortOrder').value;
+  var statusEl = document.getElementById('rp_status');
+  var pdfBtn = document.getElementById('rp_pdfBtn');
+  statusEl.textContent = '⏳ यादी तयार होत आहे...';
+  pdfBtn.disabled = true;
+
+  rpEnsureStudents(function(all) {
+    var base = all.filter(function(s) {
+      if (filterClass && String(s.iyatta||'').trim() !== filterClass) return false;
+      if (filterTukdi && String(s.tukdi||'').trim() !== filterTukdi) return false;
+      return true;
+    });
+
+    function finish(rows, extraCols, title) {
+      rows = rpSortStudents(rows, sortOrder);
+      rptLastRows = rows;
+      rptLastMeta = { extraCols: extraCols, title: title };
+      rpRenderTable(rows, extraCols, title);
+      statusEl.textContent = rows.length
+        ? ('✅ एकूण ' + rows.length + ' विद्यार्थी सापडले.')
+        : '⚠️ या निकषांनुसार एकही विद्यार्थी सापडला नाही.';
+      pdfBtn.disabled = rows.length === 0;
+    }
+
+    if (type === 'caste') {
+      var q = (document.getElementById('rp_casteVal').value || '').trim().toLowerCase();
+      var rows = q
+        ? base.filter(function(s){ return (s.caste||'').trim().toLowerCase() === q; })
+        : base.filter(function(s){ return (s.caste||'').trim() !== ''; });
+      finish(rows, [{key:'caste', label:'जात'}],
+        '🗂️ जातनिहाय विद्यार्थी यादी' + (q ? (' — ' + document.getElementById('rp_casteVal').value.trim()) : ''));
+
+    } else if (type === 'category') {
+      var cat = document.getElementById('rp_categoryVal').value;
+      var rows2 = cat
+        ? base.filter(function(s){ return (s.category||'').trim() === cat; })
+        : base.filter(function(s){ return (s.category||'').trim() !== ''; });
+      finish(rows2, [{key:'category', label:'प्रवर्ग'}],
+        '🏷️ जात प्रवर्गनिहाय विद्यार्थी यादी' + (cat ? (' — ' + cat) : ''));
+
+    } else if (type === 'class') {
+      finish(base.slice(), [{key:'rollNo', label:'रोल नं.'}],
+        '🏫 वर्गनिहाय विद्यार्थी यादी' + (filterClass ? (' — ' + filterClass + (filterTukdi ? (' ' + filterTukdi) : '')) : ' (सर्व वर्ग)'));
+
+    } else if (type === 'mobile') {
+      finish(base.slice(),
+        [{key:'whatsappMobile', label:'WhatsApp मोबाईल'},{key:'alternateMobile', label:'पर्यायी मोबाईल'}],
+        '📱 मोबाईल क्रमांकासहित विद्यार्थी यादी');
+
+    } else if (type === 'address') {
+      finish(base.slice(), [{key:'address', label:'पत्ता'}], '🏠 पत्त्यासह विद्यार्थी यादी');
+
+    } else if (type === 'minority') {
+      var rows3 = base.filter(function(s){ return (s.minority||'').trim().toLowerCase() === 'yes'; });
+      finish(rows3, [{key:'religion', label:'धर्म'}], '🕊️ अल्पसंख्यांक विद्यार्थ्यांची यादी');
+
+    } else if (type === 'gender') {
+      finish(base.slice(), [], '⚧ लिंगानुसार विद्यार्थी यादी');
+
+    } else if (type === 'feepaid' || type === 'feedue') {
+      statusEl.textContent = '⏳ फी माहिती Load होत आहे...';
+      rpEnsureFees(function(feeMap, totalFee) {
+        var rows4 = base.filter(function(s) {
+          var key = String(s.regNo||'').trim().toLowerCase();
+          var f = feeMap[key];
+          var paid = f ? (parseFloat(f.feePaid)||0) : 0;
+          return type === 'feepaid' ? paid > 0 : paid <= 0;
+        }).map(function(s) {
+          var key = String(s.regNo||'').trim().toLowerCase();
+          var f = feeMap[key];
+          var copy = {};
+          for (var k in s) copy[k] = s[k];
+          copy._feePaid = f ? (parseFloat(f.feePaid)||0) : 0;
+          copy._feePending = f ? (parseFloat(f.pendingFee)||0) : totalFee;
+          return copy;
+        });
+        var cols = type === 'feepaid'
+          ? [{key:'_feePaid', label:'जमा फी (₹)'}, {key:'_feePending', label:'थकीत फी (₹)'}]
+          : [{key:'_feePending', label:'थकीत फी (₹)'}];
+        finish(rows4, cols, type === 'feepaid' ? '💰 फी दिलेल्या विद्यार्थ्यांची यादी' : '⚠️ फी न दिलेल्या विद्यार्थ्यांची यादी');
+      });
+    }
+  });
+}
+
+function rpClassLabel(s) {
+  return (s.iyatta || '') + (s.tukdi ? (' - ' + s.tukdi) : '');
+}
+
+function rpRenderTable(rows, extraCols, title) {
+  var titleEl = document.getElementById('rp_resultTitle');
+  var headers = ['अ.क्र.','विद्यार्थ्याचे नाव','रजिस्टर क्रमांक','वर्ग','लिंग'].concat(extraCols.map(function(c){ return c.label; }));
+  document.getElementById('rp_theadRow').innerHTML = headers.map(function(h){ return '<th>'+h+'</th>'; }).join('');
+
+  var tbody = document.getElementById('rp_tbody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="'+headers.length+'">कोणताही विद्यार्थी सापडला नाही.</td></tr>';
+    titleEl.textContent = title || 'रिपोर्ट';
+    return;
+  }
+  tbody.innerHTML = rows.map(function(s, i) {
+    var extras = extraCols.map(function(c){ return '<td>'+escRpHtml(s[c.key] != null ? s[c.key] : '')+'</td>'; }).join('');
+    return '<tr><td>'+(i+1)+'</td><td>'+escRpHtml(s.firstName||'')+'</td><td>'+escRpHtml(s.regNo||'')+'</td>'
+      + '<td>'+escRpHtml(rpClassLabel(s))+'</td><td>'+escRpHtml(s.gender||'')+'</td>'+extras+'</tr>';
+  }).join('');
+
+  titleEl.textContent = title || 'रिपोर्ट';
+  if (extraCols.length === 0 && title && title.indexOf('लिंगानुसार') !== -1) {
+    var girls = rows.filter(function(s){ return (s.gender||'').toLowerCase()==='female'; }).length;
+    var boys  = rows.filter(function(s){ return (s.gender||'').toLowerCase()==='male'; }).length;
+    titleEl.textContent = title + ' — एकूण मुली: ' + girls + ', एकूण मुले: ' + boys + ', एकूण: ' + rows.length;
+  }
+}
+
+// ===== A4 आकारात बहु-पानी PDF Export (html2canvas + jsPDF — Marathi फॉन्टसाठी विश्वासार्ह पद्धत) =====
+function rpExportPDF() {
+  if (!rptLastRows || !rptLastRows.length) return;
+  var btn = document.getElementById('rp_pdfBtn');
+  var origTxt = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ PDF तयार होत आहे...';
+
+  var extraCols = rptLastMeta.extraCols || [];
+  var headers = ['अ.क्र.','विद्यार्थ्याचे नाव','रजिस्टर क्रमांक','वर्ग','लिंग'].concat(extraCols.map(function(c){ return c.label; }));
+  var rows = rptLastRows;
+  var hasAddress = extraCols.some(function(c){ return c.key === 'address'; });
+  var ROWS_PER_PAGE = hasAddress ? 22 : (headers.length >= 7 ? 26 : 32);
+  var totalPages = Math.max(1, Math.ceil(rows.length / ROWS_PER_PAGE));
+  var today = todayDate();
+
+  var container = document.createElement('div');
+  container.style.cssText = 'position:fixed;left:-99999px;top:0;';
+  document.body.appendChild(container);
+
+  var pageDivs = [];
+  for (var p = 0; p < totalPages; p++) {
+    var chunk = rows.slice(p*ROWS_PER_PAGE, (p+1)*ROWS_PER_PAGE);
+    var thStyle = 'background:#1a2a4a;color:#fff;padding:2mm;border:0.3mm solid #888;text-align:left;font-size:8.5pt';
+    var tdStyle = 'padding:1.6mm 2mm;border:0.3mm solid #ccc;font-size:8.5pt';
+    var headCells = headers.map(function(h){ return '<th style="'+thStyle+'">'+h+'</th>'; }).join('');
+    var bodyRows = chunk.map(function(s, i) {
+      var idx = p*ROWS_PER_PAGE + i + 1;
+      var cells = '<td style="'+tdStyle+'">'+idx+'</td>'
+        + '<td style="'+tdStyle+'">'+escRpHtml(s.firstName||'')+'</td>'
+        + '<td style="'+tdStyle+'">'+escRpHtml(s.regNo||'')+'</td>'
+        + '<td style="'+tdStyle+'">'+escRpHtml(rpClassLabel(s))+'</td>'
+        + '<td style="'+tdStyle+'">'+escRpHtml(s.gender||'')+'</td>';
+      cells += extraCols.map(function(c){ return '<td style="'+tdStyle+'">'+escRpHtml(s[c.key] != null ? s[c.key] : '')+'</td>'; }).join('');
+      return '<tr>'+cells+'</tr>';
+    }).join('');
+
+    var pageDiv = document.createElement('div');
+    pageDiv.style.cssText = 'width:210mm;min-height:297mm;padding:12mm;box-sizing:border-box;background:#fff;'
+      + 'font-family:"Noto Sans Devanagari","Mukta",sans-serif;color:#111;position:relative';
+    pageDiv.innerHTML =
+      '<div style="text-align:center;margin-bottom:4mm">'
+        + '<div style="font-size:15pt;font-weight:800;color:#1a2a4a">Shri Govindrao Seksaria High School, Pachora</div>'
+        + '<div style="font-size:11pt;font-weight:700;margin-top:1mm">'+escRpHtml(rptLastMeta.title||'रिपोर्ट')+'</div>'
+        + '<div style="font-size:8pt;color:#555;margin-top:1mm">दिनांक: '+today+' &nbsp;|&nbsp; पान '+(p+1)+'/'+totalPages+' &nbsp;|&nbsp; एकूण विद्यार्थी: '+rows.length+'</div>'
+      + '</div>'
+      + '<table style="width:100%;border-collapse:collapse"><thead><tr>'+headCells+'</tr></thead><tbody>'+bodyRows+'</tbody></table>'
+      + '<div style="margin-top:6mm;text-align:center;font-size:6.5pt;color:#999;border-top:0.3mm solid #ccc;padding-top:2mm">'
+        + 'Shri. Govindrao Sakseria High School, Pachora | Software Development by Tonape sir (SGS Highschool, Pachora)'
+      + '</div>';
+    container.appendChild(pageDiv);
+    pageDivs.push(pageDiv);
+  }
+
+  var doc = null;
+  var idx = 0;
+  function finishExport(err) {
+    if (container.parentNode) container.parentNode.removeChild(container);
+    btn.disabled = false;
+    btn.textContent = origTxt;
+    if (err) { alert('❌ PDF तयार करताना त्रुटी: ' + err.message); return; }
+    var fname = 'Report_' + (document.getElementById('rp_type').value||'list') + '_' + new Date().toISOString().slice(0,10) + '.pdf';
+    doc.save(fname);
+  }
+  function renderNext() {
+    if (idx >= pageDivs.length) { finishExport(null); return; }
+    html2canvas(pageDivs[idx], { scale: 2.5, useCORS: true, allowTaint: true, backgroundColor: '#ffffff', logging: false })
+      .then(function(canvas) {
+        var pdfW = 210, pdfH = 297;
+        var cw = canvas.width, ch = canvas.height;
+        var pageAspect = pdfW/pdfH, imgAspect = cw/ch;
+        var imgW, imgH, offsetX = 0, offsetY = 0;
+        if (imgAspect > pageAspect) { imgW = pdfW; imgH = pdfW/imgAspect; }
+        else { imgH = pdfH; imgW = pdfH*imgAspect; offsetX = (pdfW-imgW)/2; }
+        var imgData = canvas.toDataURL('image/jpeg', 0.95);
+        if (!doc) doc = new window.jspdf.jsPDF({ orientation:'portrait', unit:'mm', format:'a4', compress:true });
+        else doc.addPage();
+        doc.addImage(imgData, 'JPEG', offsetX, offsetY, imgW, imgH);
+        idx++;
+        renderNext();
+      })
+      .catch(function(err){ finishExport(err); });
+  }
+  renderNext();
 }
 function showSaveError(msg){
   showSaveNotif('❌','Error!','','',msg||'Save झाले नाही.');
