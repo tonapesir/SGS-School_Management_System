@@ -44,6 +44,15 @@ body.role-teacher .tch-back-btn{display:inline-block!important}
 /* रिपोर्ट पान — Class Teacher लाही उपलब्ध असावे (Super/Master प्रमाणेच) */
 body.role-teacher .navbtn[data-page="report"]{display:inline-block!important}
 body.role-teacher .dcard[data-page="report"]{display:block!important}
+
+/* ===== REPORT PAGE — वर्ग/तुकडी चेकबॉक्स व Column Field चेकबॉक्स+क्रम ===== */
+.rp-chk-row{display:inline-flex;align-items:center;gap:5px;background:var(--navy3);border:1px solid var(--navy2);border-radius:20px;padding:6px 12px;margin:0 6px 8px 0;font-size:12.5px;cursor:pointer;color:var(--txt)}
+.rp-chk-row input{cursor:pointer}
+#rp_teacherClassNote{font-size:13px;margin-bottom:4px;color:#7ef7a0;font-weight:700;background:rgba(26,90,58,.25);border:1px solid #1a5a3a;border-radius:8px;padding:10px 14px}
+.rp-fields-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px 18px}
+.rp-field-row{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--navy3);border:1px solid var(--navy2);border-radius:8px;padding:7px 10px;font-size:12.5px}
+.rp-field-row label{display:flex;align-items:center;gap:6px;cursor:pointer;flex:1;color:var(--txt)}
+.rp-field-order{width:44px;padding:4px 4px;border-radius:5px;border:1.5px solid var(--pb);background:var(--peach);font-family:inherit;font-size:12px;text-align:center}
 .tch-tabbtn{background:var(--navy3);border:1px solid var(--navy2);color:var(--txt);padding:9px 14px;border-radius:20px;cursor:pointer;font-size:12.5px;font-weight:600;font-family:inherit;margin:0 6px 8px 0}
 .tch-tabbtn.active{background:var(--gold);color:#1a1200;border-color:var(--gold)}
 .tch-panel{display:none}
