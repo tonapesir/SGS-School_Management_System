@@ -35,7 +35,17 @@ var DIARY_HEADERS    = ["Timestamp","Date","RegNo","StudentId","FullName","Class
 var TRANSPORT_HEADERS= ["Timestamp","RegNo","StudentId","FullName","Class","Division","NativeVillage","TravelMode","TransportContact","UpdatedBy"];
 // ===== FEES (V19.33) — प्रत्येक जमा installment ची स्वतंत्र row, पण त्या क्षणापर्यंतची cumulative FeePaid/PendingFee सोबत =====
 var FEES_HEADERS     = ["Timestamp","RegNo","StudentId","FullName","Class","Division","AcYear","TotalFee","FeePaid","PendingFee","UpdatedBy"];
-var TOTAL_FEE_PER_STUDENT = 1000; // उदा. एकूण फी — गरजेनुसार येथे बदला
+var TOTAL_FEE_PER_STUDENT_DEFAULT = 1000; // सुरुवातीचे Default — Super/Master ने Maintenance मधून बदल न केल्यास हेच वापरले जाईल
+// चालू शाळेची एकूण फी — Super Master/Master ने "मेंटेनन्स → शाळेची एकूण फी ठरवा" मधून ठरवलेली, PropertiesService मध्ये जतन
+function getTotalFeePerStudent() {
+  try {
+    var v = PropertiesService.getScriptProperties().getProperty('TOTAL_FEE_PER_STUDENT');
+    var n = parseFloat(v);
+    return (v !== null && !isNaN(n) && n > 0) ? n : TOTAL_FEE_PER_STUDENT_DEFAULT;
+  } catch (e) {
+    return TOTAL_FEE_PER_STUDENT_DEFAULT;
+  }
+}
 var CONTACTS_HEADERS = ["Timestamp","RegNo","StudentId","FullName","Class","Division","WhatsAppMobile","OtherMobile","UpdatedBy"];
 var CATEGORY_LIST_SRV = ["SC","ST","VJA","NT B","NT C","NT D","SEBC","SBC","OBC","Gen"];
 
@@ -290,13 +300,16 @@ function handleAction(d, cb) {
       result = doSaveStudentContact(d);
     } else if (action === "updateClassDivision") {
       result = doUpdateClassDivision(d);
+    } else if (action === "saveTotalFee") {
+      result = doSaveTotalFee(d);
     } else {
       return wrap(cb, {status:"error", message:"Unknown action: "+action});
     }
     if (result && result.status === "error") return wrap(cb, result);
     logAudit(d.auditUser, d.auditRole, action, result.serial || d.regNo || d.stxt1 || result.ref || "");
     return wrap(cb, {status:"ok", rowIndex:result.rowIndex, action:action, mode:result.mode, serial:result.serial||"", count:result.count||0,
-      oldIyatta:result.oldIyatta||"", oldTukdi:result.oldTukdi||""});
+      oldIyatta:result.oldIyatta||"", oldTukdi:result.oldTukdi||"",
+      oldTotalFee:result.oldTotalFee||0, newTotalFee:result.newTotalFee||0});
   } catch(err) {
     return wrap(cb, {status:"error", message:err.toString()});
   }
@@ -855,7 +868,7 @@ function doSaveFees(d) {
       }
     }
 
-    var totalFee = TOTAL_FEE_PER_STUDENT;
+    var totalFee = getTotalFeePerStudent();
     var feePaid = prevPaid + amount;
     var pendingFee = Math.max(0, totalFee - feePaid);
     var now = new Date();
@@ -888,7 +901,7 @@ function doGetFees(p, cb) {
     }
     // नवीन-ते-जुने क्रमाने — entries[0] म्हणजे प्रत्येक विद्यार्थ्याची सर्वात अलीकडची (latest cumulative) नोंद
     out.sort(function(a,b){ return (a.date < b.date) ? 1 : -1; });
-    return wrap(cb, {status:"ok", data: out, totalFeePerStudent: TOTAL_FEE_PER_STUDENT});
+    return wrap(cb, {status:"ok", data: out, totalFeePerStudent: getTotalFeePerStudent()});
   } catch(err) {
     return wrap(cb, {status:"error", message:err.toString()});
   }
@@ -945,6 +958,24 @@ function doUpdateClassDivision(d) {
     sh.getRange(rowToWrite, 7, 1, 2).setValues([[d.iyatta||"", d.tukdi||""]]);
     return {rowIndex: rowToWrite, mode:"updated", ref: d.regNo||"",
       oldIyatta: curIyatta, oldTukdi: curTukdi};
+  } catch(err) {
+    return {status:"error", message:err.toString()};
+  }
+}
+
+// ===== शाळेची एकूण फी ठरवणे — फक्त Super Master / Master (Maintenance पान) =====
+function doSaveTotalFee(d) {
+  try {
+    if (d.requesterRole !== "super" && d.requesterRole !== "master") {
+      return {status:"error", message:"एकूण फी ठरवण्याचा अधिकार फक्त Super Master / Master ला आहे."};
+    }
+    var amount = parseFloat(d.totalFee);
+    if (isNaN(amount) || amount <= 0) {
+      return {status:"error", message:"एकूण फीची रक्कम बरोबर टाका (0 पेक्षा जास्त)."};
+    }
+    var oldAmount = getTotalFeePerStudent();
+    PropertiesService.getScriptProperties().setProperty('TOTAL_FEE_PER_STUDENT', String(amount));
+    return {rowIndex: 0, mode: "updated", ref: "TotalFee:" + amount, oldTotalFee: oldAmount, newTotalFee: amount};
   } catch(err) {
     return {status:"error", message:err.toString()};
   }

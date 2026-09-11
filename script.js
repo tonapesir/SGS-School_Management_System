@@ -32,7 +32,7 @@ window.androidBackPressed = function() {
 
 
 // URL persistence
-var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbyvbVxje-K_dpU14bTh1DBvrjUaXtOCF2D96B4K3zbp8HjPQQF--huITsSJ6OhTXcpK/exec';
+var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbzL-gJ3FdtYimYBjUJHJiV8MLdO4pcaHKtkLdBi8WwVJpzTqA4O-xihD2cqdVuDT4MJ/exec';
 
 // =====================================================
 // 🔐 LOGIN + ROLE PERMISSIONS
@@ -3509,6 +3509,34 @@ function mntSaveChange() {
   });
 }
 
+// ===== शाळेची एकूण फी ठरवणे (Maintenance — Super Master / Master) =====
+function feeLoadCurrentTotal() {
+  var el = document.getElementById('fee_currentTotal');
+  if (!el) return;
+  el.textContent = '⏳';
+  jsonpRequest({action:'getFees'}, function(r) {
+    el.textContent = (r && r.status === 'ok' && r.totalFeePerStudent) ? r.totalFeePerStudent : '—';
+  });
+}
+
+function feeSaveTotal() {
+  var statusEl = document.getElementById('fee_status');
+  var val = document.getElementById('fee_newTotal').value;
+  var amount = parseFloat(val);
+  if (!val || isNaN(amount) || amount <= 0) { statusEl.textContent = '⚠️ बरोबर रक्कम टाका (0 पेक्षा जास्त).'; return; }
+  statusEl.textContent = '⏳ Saving...';
+  var data = { action:'saveTotalFee', totalFee: amount, requesterUser: currentUser.username, requesterRole: currentUser.role };
+  smartSave(data, function(r) {
+    if (r && r.status === 'ok') {
+      statusEl.textContent = '✅ एकूण फी ₹' + (r.oldTotalFee||'—') + ' वरून ₹' + (r.newTotalFee||amount) + ' अशी बदलली.';
+      document.getElementById('fee_currentTotal').textContent = r.newTotalFee || amount;
+      document.getElementById('fee_newTotal').value = '';
+    } else {
+      statusEl.textContent = '❌ ' + (r && r.message ? r.message : 'Failed');
+    }
+  });
+}
+
 // ===== Master / Super Master — वर्ग माहिती: विद्यार्थी यादी + Student Diary नोंदी (V19.32) =====
 var ciRoster = [];
 
@@ -4185,7 +4213,7 @@ function tchRenderStudentFeeStat(regNo) {
   var entries = tchFeesData.filter(function(f){ return String(f.regNo) === String(regNo); });
   var latest = entries[0];
   var paid = latest ? (parseFloat(latest.feePaid)||0) : 0;
-  var pending = latest ? (parseFloat(latest.pendingFee)||0) : tchTotalFeePerStudent;
+  var pending = Math.max(0, tchTotalFeePerStudent - paid); // सध्याच्या (चालू) एकूण फी सेटिंगनुसार नेहमी ताजी गणना
   document.getElementById('tch_studentFeeName').textContent = (s.rollNo||'') + ' - ' + (s.fullName||'');
   document.getElementById('tch_studentFeePaid').textContent = '₹' + paid;
   document.getElementById('tch_studentFeePending').textContent = '₹' + pending;
@@ -4239,7 +4267,7 @@ function tchLoadFeesTable(reselectRegNo) {
         var entries = tchFeesData.filter(function(f){ return String(f.regNo) === String(s.regNo); });
         var latest = entries[0];
         var paid = latest ? (parseFloat(latest.feePaid)||0) : 0;
-        var pending = latest ? (parseFloat(latest.pendingFee)||0) : tchTotalFeePerStudent;
+        var pending = Math.max(0, tchTotalFeePerStudent - paid); // सध्याच्या (चालू) एकूण फी सेटिंगनुसार नेहमी ताजी गणना
         classTotal += paid;
         var pendingStyle = pending > 0 ? 'color:#ff9090;font-weight:700' : 'color:#7be08a';
         return '<tr><td>' + (s.rollNo||'') + '</td><td>' + s.fullName + '</td><td>₹' + paid + '</td><td style="' + pendingStyle + '">₹' + pending + '</td></tr>';
@@ -4510,9 +4538,9 @@ function rpGenerate() {
   if (!fields.length) { statusEl.textContent = '⚠️ किमान एक Column Field निवडा.'; return; }
 
   var sortOrder = document.getElementById('rp_sortOrder').value;
-  var feeFilterEl = document.getElementById('rp_feeFilter');
-  var feeFilter = feeFilterEl ? feeFilterEl.value : 'all'; // all | paid | unpaid
-  var needsFees = feeFilter !== 'all' || fields.some(function(f){ return f.key === 'feePaid' || f.key === 'feePending'; });
+  var hasFeePaidFilter = fields.some(function(f){ return f.key === 'feePaidFilter'; });
+  var hasFeeDueFilter  = fields.some(function(f){ return f.key === 'feeDueFilter'; });
+  var needsFees = hasFeePaidFilter || hasFeeDueFilter;
 
   statusEl.textContent = '⏳ यादी तयार होत आहे...';
   pdfBtn.disabled = true;
@@ -4547,11 +4575,16 @@ function rpGenerate() {
         var copy = {};
         for (var k in s) copy[k] = s[k];
         copy.feePaid = f ? (parseFloat(f.feePaid)||0) : 0;
-        copy.feePending = f ? (parseFloat(f.pendingFee)||0) : totalFee;
+        // सध्याच्या (Maintenance मध्ये Super/Master ने ठरवलेल्या) चालू एकूण फी नुसार थकीत रक्कम नेहमी ताजी काढतो
+        copy.feePending = Math.max(0, totalFee - copy.feePaid);
+        // दोन्ही चेकबॉक्ससाठी कॉलममध्ये जमा रक्कम (₹) दाखवायची आहे
+        copy.feePaidFilter = copy.feePaid;
+        copy.feeDueFilter = copy.feePaid;
         return copy;
       });
-      if (feeFilter === 'paid') merged = merged.filter(function(s){ return s.feePaid > 0; });
-      else if (feeFilter === 'unpaid') merged = merged.filter(function(s){ return s.feePaid <= 0; });
+      // दोन्ही एकाच वेळी टिक असल्यास — कुठलाही एक फिल्टर न लावता सर्व विद्यार्थी दाखवतो (दोन्ही कॉलमसह)
+      if (hasFeePaidFilter && !hasFeeDueFilter) merged = merged.filter(function(s){ return s.feePaid > 0; });
+      else if (hasFeeDueFilter && !hasFeePaidFilter) merged = merged.filter(function(s){ return s.feePending > 0; });
       finish(merged);
     });
   });

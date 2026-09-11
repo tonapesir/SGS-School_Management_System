@@ -56,7 +56,7 @@
   <button class="navbtn" data-page="profile" onclick="showPage('profile',this)">🪪 Profile</button>
   <button class="navbtn" data-page="users" data-master-only="true" onclick="showPage('users',this)">👥 Users</button>
   <button class="navbtn master-only" data-page="stats" onclick="showPage('stats',this)">📊 सांख्यिकी अहवाल</button>
-  <button class="navbtn master-only" data-page="maintenance" onclick="showPage('maintenance',this)">🔧 मेंटेनन्स</button>
+  <button class="navbtn master-only" data-page="maintenance" onclick="showPage('maintenance',this);feeLoadCurrentTotal();">🔧 मेंटेनन्स</button>
   <button class="navbtn master-only" data-page="classinfo" onclick="showPage('classinfo',this)">🏫 वर्ग माहिती</button>
   <button class="navbtn master-only" data-page="report" onclick="showPage('report',this);rpInit();">📑 रिपोर्ट</button>
   <button class="navbtn" data-page="teacher" onclick="showPage('teacher',this)">🏫 वर्ग शिक्षक</button>
@@ -296,7 +296,7 @@
       <h3>सांख्यिकी अहवाल</h3>
       <p>वर्गनिहाय हजेरी, फी, प्रवर्ग व वय अहवाल</p>
     </div>
-    <div class="dcard master-only" data-page="maintenance" onclick="showPage('maintenance',this)">
+    <div class="dcard master-only" data-page="maintenance" onclick="showPage('maintenance',this);feeLoadCurrentTotal();">
       <div class="icon">🔧</div>
       <h3>मेंटेनन्स</h3>
       <p>विद्यार्थ्यांचा वर्ग/तुकडी बदल, Delete</p>
@@ -1067,6 +1067,30 @@
     </div>
   </div>
 
+  <div class="card" style="margin-top:16px">
+    <div class="card-header">
+      <div>
+        <h2>💰 शाळेची एकूण फी ठरवा</h2>
+        <p>येथे ठरवलेल्या रकमेप्रमाणेच "फी दिलेले / फी बाकी असलेले विद्यार्थी" हे रिपोर्ट व वर्ग शिक्षकाचा Fees हिशोब ठरतो</p>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="frow" style="gap:20px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-size:11px;opacity:.7">सध्या ठरलेली एकूण फी</div>
+          <div style="font-size:20px;font-weight:800;color:var(--gold2)">₹<span id="fee_currentTotal">—</span> <span style="font-size:12px;font-weight:400;opacity:.7">/ प्रत्येक विद्यार्थी</span></div>
+        </div>
+        <div class="fg w150">
+          <label>नवीन एकूण फी (₹)</label>
+          <input type="number" id="fee_newTotal" min="1" placeholder="उदा. 1500">
+        </div>
+        <div class="fg" style="flex:0 0 auto"><button class="btn btn-gold" onclick="feeSaveTotal()">💾 जतन करा</button></div>
+      </div>
+      <div id="fee_status" style="font-size:12.5px;margin-top:10px;color:#555"></div>
+      <div style="font-size:11.5px;margin-top:6px;color:#888">टीप: आधीच नोंदवलेल्या जमा-रकमेच्या नोंदी बदलत नाहीत — फक्त "थकीत फी"ची गणना यापुढे नवीन एकूण फी नुसार होईल.</div>
+    </div>
+  </div>
+
   <div class="card" style="margin-top:16px;border:2px solid #c02020">
     <div class="card-header" style="background:rgba(192,32,32,.15)">
       <div>
@@ -1201,8 +1225,8 @@
         <div class="rp-field-row"><label><input type="checkbox" class="rp-field-chk" data-key="whatsappMobile" data-label="WhatsApp Mobile No"> WhatsApp Mobile No</label><input type="number" class="rp-field-order" min="1" max="20" value="13"></div>
         <div class="rp-field-row"><label><input type="checkbox" class="rp-field-chk" data-key="category" data-label="Category"> Category</label><input type="number" class="rp-field-order" min="1" max="20" value="14"></div>
         <div class="rp-field-row"><label><input type="checkbox" class="rp-field-chk" data-key="minority" data-label="Minority"> Minority</label><input type="number" class="rp-field-order" min="1" max="20" value="15"></div>
-        <div class="rp-field-row"><label><input type="checkbox" class="rp-field-chk" data-key="feePaid" data-label="जमा फी (₹)"> जमा फी (₹)</label><input type="number" class="rp-field-order" min="1" max="20" value="16"></div>
-        <div class="rp-field-row"><label><input type="checkbox" class="rp-field-chk" data-key="feePending" data-label="थकीत फी (₹)"> थकीत फी (₹)</label><input type="number" class="rp-field-order" min="1" max="20" value="17"></div>
+        <div class="rp-field-row"><label><input type="checkbox" class="rp-field-chk" data-key="feePaidFilter" data-label="जमा रक्कम (₹)"> 💰 फी दिलेले विद्यार्थी (+ जमा रक्कम)</label><input type="number" class="rp-field-order" min="1" max="20" value="16"></div>
+        <div class="rp-field-row"><label><input type="checkbox" class="rp-field-chk" data-key="feeDueFilter" data-label="जमा रक्कम (₹)"> ⚠️ फी बाकी असलेले विद्यार्थी (+ जमा रक्कम)</label><input type="number" class="rp-field-order" min="1" max="20" value="17"></div>
       </div>
     </div>
   </div>
@@ -1230,18 +1254,11 @@
             <option value="name">नावानुसार (अ ते ज्ञ)</option>
           </select>
         </div>
-        <div class="fg w180">
-          <label>फी स्थिती फिल्टर</label>
-          <select id="rp_feeFilter">
-            <option value="all">सर्व विद्यार्थी</option>
-            <option value="paid">💰 फक्त फी दिलेले</option>
-            <option value="unpaid">⚠️ फक्त फी न दिलेले</option>
-          </select>
-        </div>
         <div class="fg" style="flex:0 0 auto"><button class="btn btn-blue" onclick="rpGenerate()">📋 यादी तयार करा</button></div>
         <div class="fg" style="flex:0 0 auto"><button class="btn btn-green" id="rp_pdfBtn" onclick="rpExportPDF()" disabled>📥 PDF Export</button></div>
       </div>
       <div id="rp_status" style="font-size:12.5px;margin-top:10px;color:#555"></div>
+      <div style="font-size:11.5px;margin-top:6px;color:#888">टीप: "फी दिलेले"/"फी बाकी असलेले" चेकबॉक्स Column Field यादीत आहेत — तेच फिल्टर व जमा-रक्कम कॉलम दोन्ही ठरवतात.</div>
     </div>
   </div>
 
