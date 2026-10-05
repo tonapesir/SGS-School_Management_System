@@ -198,6 +198,23 @@ function doGet(e) {
   if (p.action === "deleteStudent") {
     return doDeleteStudent(p, cb);
   }
+  // ===== V19.35 — नवीन Admin सुविधा =====
+  if (p.action === "getPendingFeesAll") {
+    return doGetPendingFeesAll(p, cb);
+  }
+  if (p.action === "previewPromotion") {
+    return doPreviewPromotion(p, cb);
+  }
+  if (p.action === "getAttendancePending") {
+    return doGetAttendancePending(p, cb);
+  }
+  if (p.action === "getBackupStatus") {
+    return doGetBackupStatus(p, cb);
+  }
+  if (p.action === "promoteStudents" || p.action === "undoPromotion" ||
+      p.action === "runBackup" || p.action === "setBackupSchedule") {
+    return handleAction(p, cb);
+  }
   var a = p.action || "";
   if (a.indexOf("save") === 0 || a.indexOf("upsert") === 0 ||
       a.indexOf("update") === 0) {
@@ -224,6 +241,15 @@ function handleAction(d, cb) {
     if (!ss) return wrap(cb, {status:"error", message:"Script NOT bound to a Sheet. Open Sheet → Extensions → Apps Script."});
     var action = d.action || "upsert";
     var result = {rowIndex:0, mode:"created"};
+
+    // ===== Offline "Pending Saves" queue साठी — तोच reqId पुन्हा आल्यास (retry) दुबार नोंद होऊ नये (V19.35) =====
+    var reqKey = d.reqId ? ("req_" + d.reqId) : "";
+    if (reqKey) {
+      try {
+        var prevResp = CacheService.getScriptCache().get(reqKey);
+        if (prevResp) { var pr = JSON.parse(prevResp); pr.duplicate = true; return wrap(cb, pr); }
+      } catch (eReq) {}
+    }
 
     if (action === "save" || action === "update" || action === "upsert") {
       var sh = getOrCreateSheet("Students", MAIN_HEADERS);
@@ -302,14 +328,30 @@ function handleAction(d, cb) {
       result = doUpdateClassDivision(d);
     } else if (action === "saveTotalFee") {
       result = doSaveTotalFee(d);
+    } else if (action === "promoteStudents") {
+      result = doPromoteStudents(d);
+    } else if (action === "undoPromotion") {
+      result = doUndoPromotion(d);
+    } else if (action === "runBackup") {
+      result = doRunBackup(d);
+    } else if (action === "setBackupSchedule") {
+      result = doSetBackupSchedule(d);
     } else {
       return wrap(cb, {status:"error", message:"Unknown action: "+action});
     }
     if (result && result.status === "error") return wrap(cb, result);
-    logAudit(d.auditUser, d.auditRole, action, result.serial || d.regNo || d.stxt1 || result.ref || "");
-    return wrap(cb, {status:"ok", rowIndex:result.rowIndex, action:action, mode:result.mode, serial:result.serial||"", count:result.count||0,
+    // Students sheet बदलणाऱ्या कृतींनंतर Roster Cache रद्द करा
+    if (action === "save" || action === "update" || action === "upsert" || action === "updateClassDivision" ||
+        action === "saveStudentContact" || action === "promoteStudents" || action === "undoPromotion") {
+      invalidateRosterCache_();
+    }
+    logAudit(d.auditUser || d.requesterUser, d.auditRole || d.requesterRole, action, result.serial || d.regNo || d.stxt1 || result.ref || "");
+    var okResp = {status:"ok", rowIndex:result.rowIndex, action:action, mode:result.mode, serial:result.serial||"", count:result.count||0,
       oldIyatta:result.oldIyatta||"", oldTukdi:result.oldTukdi||"",
-      oldTotalFee:result.oldTotalFee||0, newTotalFee:result.newTotalFee||0});
+      oldTotalFee:result.oldTotalFee||0, newTotalFee:result.newTotalFee||0,
+      extra: result.extra || null};
+    if (reqKey) { try { CacheService.getScriptCache().put(reqKey, JSON.stringify(okResp), 21600); } catch (eRq2) {} }
+    return wrap(cb, okResp);
   } catch(err) {
     return wrap(cb, {status:"error", message:err.toString()});
   }
@@ -663,32 +705,148 @@ function safeParseJson(s) {
 }
 
 // ----- Attendance (Daily register — only absentees are stored) -----
+// V19.35: महिन्यानुसार स्वतंत्र Sheet (Attendance_YYYY_MM) — प्रत्येक Save फक्त त्या महिन्याची छोटी Sheet वाचते/लिहिते
+var ATT_SHEET_PREFIX = "Attendance_";
+var ATT_LEGACY_SHEET = "DailyAttendance";
+var ATT_SHEET_RE = /^Attendance_(\d{4})_(\d{2})$/;
+var ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function attMonthSheetName_(dateStr) {
+  var m = ISO_DATE_RE.exec((dateStr || "").toString().trim());
+  return m ? (ATT_SHEET_PREFIX + m[1] + "_" + m[2]) : null;
+}
+
+function getAttMonthSheet_(name) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(name);
+  if (sh) return sh;
+  sh = ss.insertSheet(name);
+  sh.appendRow(DAILY_ATT_HEADERS);
+  sh.getRange("B:B").setNumberFormat("@"); // Date कॉलम plain text — Sheets ने तारीख बदलू नये
+  sh.setFrozenRows(1);
+  return sh;
+}
+
+// दिलेल्या तारीख-मर्यादेतील महिन्यांच्या Sheets (+ अजून Migrate न झालेली जुनी DailyAttendance, असल्यास)
+function attMonthSheets_(fromDate, toDate) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var fromKey = ISO_DATE_RE.test(fromDate || "") ? fromDate.slice(0, 7).replace("-", "_") : "";
+  var toKey = ISO_DATE_RE.test(toDate || "") ? toDate.slice(0, 7).replace("-", "_") : "";
+  var out = [];
+  ss.getSheets().forEach(function(sh) {
+    var m = ATT_SHEET_RE.exec(sh.getName());
+    if (!m) return;
+    var k = m[1] + "_" + m[2];
+    if (fromKey && k < fromKey) return;
+    if (toKey && k > toKey) return;
+    out.push(sh);
+  });
+  var legacy = ss.getSheetByName(ATT_LEGACY_SHEET);
+  if (legacy) out.push(legacy);
+  return out;
+}
+
+function readAttendanceRows_(fromDate, toDate) {
+  var rows = [];
+  attMonthSheets_(fromDate, toDate).forEach(function(sh) {
+    var last = sh.getLastRow();
+    if (last > 1) rows = rows.concat(sh.getRange(2, 1, last - 1, 9).getValues());
+  });
+  return rows;
+}
+
+// जुनी DailyAttendance → महिनावार Sheets (एकदाच). Lock धरूनच call करा.
+function migrateLegacyAttendance_() {
+  var props = PropertiesService.getScriptProperties();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var old = ss.getSheetByName(ATT_LEGACY_SHEET);
+  if (!old) { props.setProperty("ATT_MIGRATED", "1"); return {moved: 0, unparsed: 0}; }
+  var last = old.getLastRow();
+  var groups = {}, unparsed = [], moved = 0;
+  if (last > 1) {
+    var vals = old.getRange(2, 1, last - 1, 9).getValues();
+    vals.forEach(function(r) {
+      if (!r[1] && !r[4] && !r[6]) return;
+      var ds = fmt(r[1]);
+      var nm = attMonthSheetName_(ds);
+      r[1] = ds;
+      if (!nm) { unparsed.push(r); return; }
+      (groups[nm] = groups[nm] || []).push(r);
+    });
+  }
+  Object.keys(groups).forEach(function(nm) {
+    var sh = getAttMonthSheet_(nm);
+    var rows = groups[nm];
+    sh.getRange(sh.getLastRow() + 1, 1, rows.length, 9).setValues(rows);
+    moved += rows.length;
+  });
+  if (unparsed.length) {
+    var up = ss.getSheetByName("DailyAttendance_Unparsed") || ss.insertSheet("DailyAttendance_Unparsed");
+    if (up.getLastRow() === 0) up.appendRow(DAILY_ATT_HEADERS);
+    up.getRange(up.getLastRow() + 1, 1, unparsed.length, 9).setValues(unparsed);
+  }
+  var stamp = Utilities.formatDate(new Date(), "Asia/Kolkata", "yyyyMMdd_HHmm");
+  old.setName("DailyAttendance_OLD_" + stamp);
+  props.setProperty("ATT_MIGRATED", "1");
+  return {moved: moved, unparsed: unparsed.length};
+}
+
+// Apps Script Editor मधून एकदा manually Run करता येते (Save वेळी हे आपोआपही होते)
+function migrateDailyAttendanceToMonthly() {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var res = migrateLegacyAttendance_();
+    Logger.log("Migrated: " + JSON.stringify(res));
+    return res;
+  } finally { lock.releaseLock(); }
+}
+
 function doSaveAttendance(d) {
+  var lock = LockService.getScriptLock();
+  var locked = false;
   try {
     var iyatta = (d.iyatta||"").toString().trim();
     var tukdi = (d.tukdi||"").toString().trim();
     var date = (d.date||todayStr()).toString().trim();
     if (!iyatta) return {status:"error", message:"Class आवश्यक आहे."};
-    var sh = getOrCreateSheet("DailyAttendance", DAILY_ATT_HEADERS);
-    // आधीचे त्या दिवसाचे/वर्गाचे रेकॉर्ड्स काढून टाका, मग नवीन यादी लिहा
-    if (sh.getLastRow() > 1) {
-      var vals = sh.getRange(2,1,sh.getLastRow()-1,4).getValues();
-      for (var i = vals.length-1; i>=0; i--) {
-        var rDate = fmt(vals[i][1]);
-        if (rDate === date && (vals[i][2]||"").toString().trim() === iyatta && (vals[i][3]||"").toString().trim() === tukdi) {
-          sh.deleteRow(i+2);
-        }
-      }
-    }
+    var shName = attMonthSheetName_(date);
+    if (!shName) return {status:"error", message:"तारीख चुकीच्या स्वरूपात आहे (YYYY-MM-DD हवी)."};
+    lock.waitLock(25000); locked = true;
+    if (PropertiesService.getScriptProperties().getProperty("ATT_MIGRATED") !== "1") migrateLegacyAttendance_();
+
+    var sh = getAttMonthSheet_(shName);
     var absentList = safeParseJson(d.absentJson);
     var ts = new Date().toLocaleString("en-IN");
-    for (var j=0;j<absentList.length;j++) {
-      var a = absentList[j];
-      sh.appendRow([ts, date, iyatta, tukdi, a.regNo||"", a.studentId||"", a.fullName||"", a.reason||"", d.markedBy||""]);
+    var newRows = absentList.map(function(a) {
+      return [ts, date, iyatta, tukdi, a.regNo||"", a.studentId||"", a.fullName||"", a.reason||"", d.markedBy||""];
+    });
+
+    // त्या दिवसाच्या/वर्गाच्या जुन्या नोंदी वगळून (फक्त या महिन्याच्या छोट्या Sheet मध्ये) बाकीच्या ठेवा
+    var last = sh.getLastRow();
+    var keep = [], removed = 0;
+    if (last > 1) {
+      var vals = sh.getRange(2, 1, last - 1, 9).getValues();
+      for (var i = 0; i < vals.length; i++) {
+        var r = vals[i];
+        if (fmt(r[1]) === date && (r[2]||"").toString().trim() === iyatta && (r[3]||"").toString().trim() === tukdi) { removed++; continue; }
+        r[1] = fmt(r[1]);
+        keep.push(r);
+      }
     }
-    return {rowIndex: sh.getLastRow(), mode:"updated", count: absentList.length, ref: iyatta+"-"+tukdi+" "+date};
+    if (removed === 0) {
+      // पहिली Save — फक्त शेवटी जोडा (सर्वात जलद)
+      if (newRows.length) sh.getRange(last + 1, 1, newRows.length, 9).setValues(newRows);
+    } else {
+      var all = keep.concat(newRows);
+      sh.getRange(2, 1, last - 1, 9).clearContent();
+      if (all.length) sh.getRange(2, 1, all.length, 9).setValues(all);
+    }
+    return {rowIndex: sh.getLastRow(), mode: removed ? "updated" : "created", count: absentList.length, ref: iyatta+"-"+tukdi+" "+date};
   } catch(err) {
     return {status:"error", message:err.toString()};
+  } finally {
+    if (locked) lock.releaseLock();
   }
 }
 
@@ -699,22 +857,19 @@ function doGetAttendance(p, cb) {
     var date = (p.date||"").toString().trim();
     var dateFrom = (p.dateFrom||"").toString().trim();
     var dateTo = (p.dateTo||"").toString().trim();
-    var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("DailyAttendance");
+    var rows = readAttendanceRows_(date || dateFrom, date || dateTo);
     var out = [];
-    if (sh && sh.getLastRow() > 1) {
-      var rows = sh.getRange(2,1,sh.getLastRow()-1,9).getValues();
-      for (var i=0;i<rows.length;i++) {
-        var r = rows[i];
-        var rDate = fmt(r[1]);
-        if (iyatta && (r[2]||"").toString().trim() !== iyatta) continue;
-        if (tukdi && (r[3]||"").toString().trim() !== tukdi) continue;
-        if (date && rDate !== date) continue;
-        if (dateFrom && rDate < dateFrom) continue;
-        if (dateTo && rDate > dateTo) continue;
-        out.push({date:rDate, iyatta:r[2], tukdi:r[3], regNo:r[4], studentId:r[5], fullName:r[6], reason:r[7], markedBy:r[8]});
-      }
+    for (var i=0;i<rows.length;i++) {
+      var r = rows[i];
+      var rDate = fmt(r[1]);
+      if (iyatta && (r[2]||"").toString().trim() !== iyatta) continue;
+      if (tukdi && (r[3]||"").toString().trim() !== tukdi) continue;
+      if (date && rDate !== date) continue;
+      if (dateFrom && rDate < dateFrom) continue;
+      if (dateTo && rDate > dateTo) continue;
+      out.push({date:rDate, iyatta:r[2], tukdi:r[3], regNo:r[4], studentId:r[5], fullName:r[6], reason:r[7], markedBy:r[8]});
     }
-    out.sort(function(a,b){ return (a.date < b.date) ? 1 : -1; });
+    out.sort(function(a,b){ return (a.date < b.date) ? 1 : (a.date > b.date ? -1 : 0); });
     return wrap(cb, {status:"ok", data: out});
   } catch(err) {
     return wrap(cb, {status:"error", message:err.toString()});
@@ -852,16 +1007,22 @@ function doSaveFees(d) {
     }
     var amount = parseFloat(d.amountPaid)||0;
     if (amount <= 0) return {status:"error", message:"जमा रक्कम बरोबर टाका."};
+    var feeLock = LockService.getScriptLock();
+    feeLock.waitLock(20000);
+    try {
     var sh = getOrCreateSheet("Fees", FEES_HEADERS);
     var regNoKey = (d.regNo||"").toString().trim().toLowerCase();
+    var acYearKey = (d.acYear||"").toString().trim();
 
-    // या विद्यार्थ्याने आधी किती जमा केले आहे ते शोधा (cumulative FeePaid, sheet मध्ये सर्वात शेवटची त्याची नोंद)
+    // या विद्यार्थ्याने (त्याच शैक्षणिक वर्षात) आधी किती जमा केले आहे ते शोधा
+    // (cumulative FeePaid, sheet मध्ये सर्वात शेवटची त्याची नोंद) — वर्ग-बढतीनंतर नवीन वर्षाची फी 0 पासून सुरू होते (V19.35)
     var prevPaid = 0;
     if (sh.getLastRow() > 1) {
       var lastRow = sh.getLastRow();
       var vals = sh.getRange(2, 1, lastRow - 1, 11).getValues();
       for (var i = vals.length - 1; i >= 0; i--) {
-        if ((vals[i][1]||"").toString().trim().toLowerCase() === regNoKey) {
+        if ((vals[i][1]||"").toString().trim().toLowerCase() === regNoKey &&
+            (!acYearKey || (vals[i][6]||"").toString().trim() === acYearKey)) {
           prevPaid = parseFloat(vals[i][8]) || 0; // column 9 = FeePaid (cumulative)
           break;
         }
@@ -876,6 +1037,7 @@ function doSaveFees(d) {
       d.iyatta||"", d.tukdi||"", d.acYear||"", totalFee, feePaid, pendingFee, d.enteredBy||""];
     sh.appendRow(row);
     return {rowIndex: sh.getLastRow(), mode:"created", ref: d.fullName||d.regNo||""};
+    } finally { feeLock.releaseLock(); }
   } catch(err) {
     return {status:"error", message:err.toString()};
   }
@@ -927,6 +1089,7 @@ function doDeleteStudent(p, cb) {
     delSh.appendRow(newRow);
 
     sh.deleteRow(rowToWrite);
+    invalidateRosterCache_();
     logAudit(p.requesterUser, p.requesterRole, "deleteStudent", regNo);
     return wrap(cb, {status:"ok", regNo: regNo});
   } catch(err) {
@@ -1028,15 +1191,12 @@ function doGetStatsReport(p, cb) {
       }
     }
 
-    var attSh = ss.getSheetByName("DailyAttendance");
-    if (attSh && attSh.getLastRow() > 1) {
-      var attRows = attSh.getRange(2, 1, attSh.getLastRow()-1, 9).getValues();
-      for (var j=0;j<attRows.length;j++) {
-        var ar = attRows[j];
-        if (fmt(ar[1]) !== today) continue;
-        var key2 = (ar[2]||"").toString().trim() + "|" + (ar[3]||"").toString().trim();
-        if (classMap[key2]) classMap[key2].absent++;
-      }
+    var attRows = readAttendanceRows_(today, today);
+    for (var j=0;j<attRows.length;j++) {
+      var ar = attRows[j];
+      if (fmt(ar[1]) !== today) continue;
+      var key2 = (ar[2]||"").toString().trim() + "|" + (ar[3]||"").toString().trim();
+      if (classMap[key2]) classMap[key2].absent++;
     }
 
     // Fees sheet मध्ये आता प्रत्येक installment ला cumulative FeePaid असतो, त्यामुळे सरळ बेरीज न करता
@@ -1108,31 +1268,92 @@ function doGetStudentContacts(p, cb) {
   }
 }
 
-// ----- Class Teacher's student list (filtered by their assigned class) -----
+// ----- Class Teacher's student list (filtered by their assigned class) — V19.35: CacheService सह -----
+var ROSTER_CACHE_TTL = 600; // सेकंद (१० मिनिटे) — कोणतीही Student-बदल Save झाल्यास Cache आपोआप रद्द होतो
+
+function rosterVer_() {
+  try {
+    var c = CacheService.getScriptCache();
+    var v = c.get("roster_ver");
+    if (!v) { v = String(Date.now()); c.put("roster_ver", v, 21600); }
+    return v;
+  } catch (e) { return "0"; }
+}
+function invalidateRosterCache_() {
+  try { CacheService.getScriptCache().put("roster_ver", String(Date.now()), 21600); } catch (e) {}
+}
+function cacheGetBig_(key) {
+  try {
+    var c = CacheService.getScriptCache();
+    var meta = c.get(key);
+    if (!meta) return null;
+    var n = parseInt(meta, 10);
+    if (!n || n < 1) return null;
+    var keys = [];
+    for (var i = 0; i < n; i++) keys.push(key + "_" + i);
+    var parts = c.getAll(keys);
+    var s = "";
+    for (var j = 0; j < n; j++) {
+      var part = parts[key + "_" + j];
+      if (part === null || part === undefined) return null;
+      s += part;
+    }
+    return JSON.parse(s);
+  } catch (e) { return null; }
+}
+function cachePutBig_(key, obj, ttl) {
+  try {
+    var s = JSON.stringify(obj);
+    var CH = 30000; // देवनागरी ३ bytes/अक्षर — एका value साठी 100KB मर्यादेत राहण्यासाठी
+    var n = Math.ceil(s.length / CH) || 1;
+    if (n > 12) return; // खूपच मोठे — Cache करू नका
+    var bag = {};
+    for (var i = 0; i < n; i++) bag[key + "_" + i] = s.substr(i * CH, CH);
+    bag[key] = String(n);
+    CacheService.getScriptCache().putAll(bag, ttl);
+  } catch (e) {}
+}
+
+function buildRoster_(iyatta, tukdi) {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Students");
+  var out = [];
+  if (sh && sh.getLastRow() > 1) {
+    var rows = sh.getRange(2,1,sh.getLastRow()-1,31).getValues();
+    for (var i=0;i<rows.length;i++) {
+      var r = rows[i];
+      if (!r[10] && !r[2]) continue;
+      if (iyatta && (r[6]||"").toString().trim() !== iyatta) continue;
+      if (tukdi && (r[7]||"").toString().trim() !== tukdi) continue;
+      out.push({
+        regNo:r[2], studentId:r[3], acYear:r[1], pen:r[8], rollNo:r[9], fullName:r[10],
+        motherName:r[11], gender:r[12], dob:fmt(r[16]), contact:r[24], address:r[25], photoUrl:r[26],
+        whatsappMobile:r[27]||"", alternateMobile:r[28]||"",
+        category:(r[29]||"").toString().trim(), minority:(r[30]||"").toString().trim(),
+        iyatta:r[6], tukdi:r[7]
+      });
+    }
+  }
+  out.sort(function(a,b){ return (parseInt(a.rollNo,10)||0) - (parseInt(b.rollNo,10)||0); });
+  return out;
+}
+
+function getRosterCached_(iyatta, tukdi, noCache) {
+  var key = "roster_" + rosterVer_() + "_" + encodeURIComponent(iyatta + "|" + tukdi);
+  if (!noCache) {
+    var hit = cacheGetBig_(key);
+    if (hit) return {data: hit, cached: true};
+  }
+  var data = buildRoster_(iyatta, tukdi);
+  cachePutBig_(key, data, ROSTER_CACHE_TTL);
+  return {data: data, cached: false};
+}
+
 function doGetClassStudents(p, cb) {
   try {
     var iyatta = (p.iyatta||"").toString().trim();
     var tukdi = (p.tukdi||"").toString().trim();
-    var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Students");
-    var out = [];
-    if (sh && sh.getLastRow() > 1) {
-      var rows = sh.getRange(2,1,sh.getLastRow()-1,31).getValues();
-      for (var i=0;i<rows.length;i++) {
-        var r = rows[i];
-        if (!r[10] && !r[2]) continue;
-        if (iyatta && (r[6]||"").toString().trim() !== iyatta) continue;
-        if (tukdi && (r[7]||"").toString().trim() !== tukdi) continue;
-        out.push({
-          regNo:r[2], studentId:r[3], acYear:r[1], pen:r[8], rollNo:r[9], fullName:r[10],
-          motherName:r[11], gender:r[12], dob:fmt(r[16]), contact:r[24], address:r[25], photoUrl:r[26],
-          whatsappMobile:r[27]||"", alternateMobile:r[28]||"",
-          category:(r[29]||"").toString().trim(), minority:(r[30]||"").toString().trim(),
-          iyatta:r[6], tukdi:r[7]
-        });
-      }
-    }
-    out.sort(function(a,b){ return (parseInt(a.rollNo,10)||0) - (parseInt(b.rollNo,10)||0); });
-    return wrap(cb, {status:"ok", data: out});
+    var res = getRosterCached_(iyatta, tukdi, p.nocache === "1");
+    return wrap(cb, {status:"ok", data: res.data, cached: res.cached});
   } catch(err) {
     return wrap(cb, {status:"error", message:err.toString()});
   }
@@ -1141,6 +1362,9 @@ function doGetClassStudents(p, cb) {
 // ----- Notice Board साठी वर्ग-तुकडी यादी — Students sheet मध्ये प्रत्यक्षात असलेल्या इयत्ता-तुकडी जोड्या (V19.34) -----
 function doGetClassList(p, cb) {
   try {
+    var clKey = "classlist_" + rosterVer_();
+    var clHit = cacheGetBig_(clKey);
+    if (clHit) return wrap(cb, {status:"ok", data: clHit, cached: true});
     var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Students");
     var out = [];
     var seen = {};
@@ -1160,6 +1384,7 @@ function doGetClassList(p, cb) {
       var ka = a.iyatta+"|"+a.tukdi, kb = b.iyatta+"|"+b.tukdi;
       return ka < kb ? -1 : (ka > kb ? 1 : 0);
     });
+    cachePutBig_(clKey, out, ROSTER_CACHE_TTL);
     return wrap(cb, {status:"ok", data: out});
   } catch(err) {
     return wrap(cb, {status:"error", message:err.toString()});
@@ -1203,7 +1428,7 @@ function doGetTodayBirthdays(p, cb) {
   }
 }
 
-// ----- Combined Teacher Dashboard -----
+// ----- Combined Teacher Dashboard (V19.35: Roster Cache + महिनावार Attendance) -----
 function doGetTeacherDashboard(p, cb) {
   try {
     var iyatta = (p.iyatta||"").toString().trim();
@@ -1211,42 +1436,30 @@ function doGetTeacherDashboard(p, cb) {
     var date = (p.date||todayStr()).toString().trim();
     var ss = SpreadsheetApp.getActiveSpreadsheet();
 
-    var totalStudents = 0;
+    var roster = getRosterCached_(iyatta, tukdi, p.nocache === "1").data;
+    var totalStudents = roster.length;
     var birthdayStudents = [];
     var todayMD = date.slice(5); // MM-DD
-    var stSh = ss.getSheetByName("Students");
-    if (stSh && stSh.getLastRow() > 1) {
-      var stRows = stSh.getRange(2,1,stSh.getLastRow()-1,27).getValues();
-      for (var i=0;i<stRows.length;i++) {
-        var r = stRows[i];
-        if (!r[10] && !r[2]) continue;
-        if (iyatta && (r[6]||"").toString().trim() !== iyatta) continue;
-        if (tukdi && (r[7]||"").toString().trim() !== tukdi) continue;
-        totalStudents++;
-        var dobStr = fmt(r[16]);
-        if (dobStr && dobStr.slice(5) === todayMD) {
-          birthdayStudents.push({regNo:r[2], fullName:r[10], dob:dobStr, contact:r[24]});
-        }
+    for (var i=0;i<roster.length;i++) {
+      var st = roster[i];
+      if (st.dob && st.dob.slice(5) === todayMD) {
+        birthdayStudents.push({regNo:st.regNo, fullName:st.fullName, dob:st.dob, contact:st.contact});
       }
     }
 
     var absentList = [];
-    var attSh = ss.getSheetByName("DailyAttendance");
-    if (attSh && attSh.getLastRow() > 1) {
-      var attRows = attSh.getRange(2,1,attSh.getLastRow()-1,9).getValues();
-      for (var j=0;j<attRows.length;j++) {
-        var ar = attRows[j];
-        if (fmt(ar[1]) !== date) continue;
-        if (iyatta && (ar[2]||"").toString().trim() !== iyatta) continue;
-        if (tukdi && (ar[3]||"").toString().trim() !== tukdi) continue;
-        absentList.push({regNo:ar[4], studentId:ar[5], fullName:ar[6], reason:ar[7]});
-      }
+    var attRows = readAttendanceRows_(date, date);
+    for (var j=0;j<attRows.length;j++) {
+      var ar = attRows[j];
+      if (fmt(ar[1]) !== date) continue;
+      if (iyatta && (ar[2]||"").toString().trim() !== iyatta) continue;
+      if (tukdi && (ar[3]||"").toString().trim() !== tukdi) continue;
+      absentList.push({regNo:ar[4], studentId:ar[5], fullName:ar[6], reason:ar[7]});
     }
 
     var notices = [];
     var noticeSh = ss.getSheetByName("Notices");
     if (noticeSh && noticeSh.getLastRow() > 1) {
-      var ck = ckey(iyatta, tukdi);
       var nRows = noticeSh.getRange(2,1,noticeSh.getLastRow()-1,6).getValues();
       for (var k=0;k<nRows.length;k++) {
         var nr = nRows[k];
@@ -1483,6 +1696,7 @@ function updateStudentPhotoUrl(regNo, photoUrl) {
   if (row) {
     sh.getRange(row, 27).setValue(photoUrl);
     SpreadsheetApp.flush();
+    invalidateRosterCache_();
   }
 }
 
@@ -1507,5 +1721,434 @@ function getPhotoUrlByRegNo(regNo) {
     return {status:"notfound", photoUrl:""};
   } catch(err) {
     return {status:"error", message:err.toString()};
+  }
+}
+
+
+// =====================================================================
+// ===== V19.35 — नवीन Admin सुविधा (Backup / थकबाकी यादी / वर्ग-बढती / हजेरी देखरेख) =====
+// =====================================================================
+
+// ---------- 1. आपोआप Backup (Time-driven Trigger) ----------
+var BACKUP_KEEP_COPIES = 14;          // प्रत्येक Spreadsheet च्या शेवटच्या किती प्रती ठेवायच्या
+var BACKUP_FOLDER_NAME = "SGS_Auto_Backups";
+
+function getBackupFolder_() {
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty("BACKUP_FOLDER_ID");
+  if (id) {
+    try { return DriveApp.getFolderById(id); } catch (e) { /* Folder delete झाला असल्यास नवीन बनवा */ }
+  }
+  var folder = DriveApp.createFolder(BACKUP_FOLDER_NAME);
+  props.setProperty("BACKUP_FOLDER_ID", folder.getId());
+  return folder;
+}
+
+// Spreadsheet IDs: चालू (Students/Users इ.) + Script Property "EXTRA_BACKUP_SS_IDS" मधील (comma-separated) इतर Spreadsheets
+function getBackupSpreadsheetIds_() {
+  var ids = [];
+  try { ids.push(SpreadsheetApp.getActiveSpreadsheet().getId()); } catch (e) {}
+  var extra = PropertiesService.getScriptProperties().getProperty("EXTRA_BACKUP_SS_IDS") || "";
+  extra.split(",").forEach(function(x) {
+    x = x.trim();
+    if (x && ids.indexOf(x) === -1) ids.push(x);
+  });
+  return ids;
+}
+
+// Trigger या function ला call करतो. Editor मधून manually Run केले तरी चालते.
+function backupSpreadsheets() {
+  var props = PropertiesService.getScriptProperties();
+  var stamp = Utilities.formatDate(new Date(), "Asia/Kolkata", "yyyy-MM-dd_HHmm");
+  var result = {time: new Date().toISOString(), stamp: stamp, files: [], errors: []};
+  try {
+    var folder = getBackupFolder_();
+    getBackupSpreadsheetIds_().forEach(function(id) {
+      try {
+        var file = DriveApp.getFileById(id);
+        var baseName = file.getName();
+        var copy = file.makeCopy(baseName + "_BACKUP_" + stamp, folder);
+        result.files.push({name: copy.getName(), url: copy.getUrl()});
+        // जुन्या प्रती काढा — फक्त शेवटच्या BACKUP_KEEP_COPIES ठेवा
+        var prefix = baseName + "_BACKUP_";
+        var all = [];
+        var it = folder.getFiles();
+        while (it.hasNext()) {
+          var f = it.next();
+          if (f.getName().indexOf(prefix) === 0) all.push(f);
+        }
+        all.sort(function(a, b) { return a.getName() < b.getName() ? 1 : (a.getName() > b.getName() ? -1 : 0); });
+        for (var i = BACKUP_KEEP_COPIES; i < all.length; i++) all[i].setTrashed(true);
+      } catch (e1) {
+        result.errors.push(id + ": " + e1.toString());
+      }
+    });
+  } catch (e) {
+    result.errors.push(e.toString());
+  }
+  result.ok = result.errors.length === 0 && result.files.length > 0;
+  props.setProperty("LAST_BACKUP", JSON.stringify(result));
+  logAudit("system", "trigger", "autoBackup", result.ok ? (result.files.length + " प्रती") : ("त्रुटी: " + result.errors.join(" | ")));
+  return result;
+}
+
+function removeBackupTriggers() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === "backupSpreadsheets") ScriptApp.deleteTrigger(t);
+  });
+  PropertiesService.getScriptProperties().setProperty("BACKUP_SCHEDULE", "off");
+}
+// Editor मधून एकदा Run करा → रोज पहाटे ~२ वा. Backup
+function setupDailyBackupTrigger() {
+  removeBackupTriggers();
+  ScriptApp.newTrigger("backupSpreadsheets").timeBased().everyDays(1).atHour(2).create();
+  PropertiesService.getScriptProperties().setProperty("BACKUP_SCHEDULE", "daily");
+}
+// किंवा दर रविवारी पहाटे ~२ वा.
+function setupWeeklyBackupTrigger() {
+  removeBackupTriggers();
+  ScriptApp.newTrigger("backupSpreadsheets").timeBased().onWeekDay(ScriptApp.WeekDay.SUNDAY).atHour(2).create();
+  PropertiesService.getScriptProperties().setProperty("BACKUP_SCHEDULE", "weekly");
+}
+// दुसऱ्या Spreadsheet(s) चे ID Backup यादीत जोडण्यासाठी Editor मधून Run करा: setExtraBackupSpreadsheetIds("ID1,ID2")
+function setExtraBackupSpreadsheetIds(csv) {
+  PropertiesService.getScriptProperties().setProperty("EXTRA_BACKUP_SS_IDS", (csv || "").toString());
+}
+
+function doRunBackup(d) {
+  if (d.requesterRole !== "super") return {status:"error", message:"Backup चा अधिकार फक्त Super Master ला आहे."};
+  var res = backupSpreadsheets();
+  if (!res.ok) return {status:"error", message:"Backup अपूर्ण: " + res.errors.join(" | ")};
+  return {rowIndex:0, mode:"created", count: res.files.length, ref:"backup", extra: res};
+}
+
+function doSetBackupSchedule(d) {
+  if (d.requesterRole !== "super") return {status:"error", message:"Backup चा अधिकार फक्त Super Master ला आहे."};
+  try {
+    if (typeof d.extraIds === "string") {
+      var cleaned = d.extraIds.split(",").map(function(x){ return x.trim(); }).filter(function(x){ return !!x; }).join(",");
+      setExtraBackupSpreadsheetIds(cleaned);
+    }
+    var mode = (d.mode || "").toString();
+    if (mode === "daily") setupDailyBackupTrigger();
+    else if (mode === "weekly") setupWeeklyBackupTrigger();
+    else if (mode === "off") removeBackupTriggers();
+    else if (!d.extraIds && d.extraIds !== "") return {status:"error", message:"अपेक्षित mode: daily / weekly / off"};
+    return {rowIndex:0, mode:"updated", ref:"backupSchedule:" + mode};
+  } catch (err) {
+    return {status:"error", message:"Trigger सेट करता आला नाही — Apps Script Editor मध्ये setupDailyBackupTrigger एकदा Run करून परवानगी द्या. (" + err.toString() + ")"};
+  }
+}
+
+function doGetBackupStatus(p, cb) {
+  try {
+    if (p.requesterRole !== "super") return wrap(cb, {status:"error", message:"अधिकार फक्त Super Master ला आहे."});
+    var props = PropertiesService.getScriptProperties();
+    var last = null;
+    try { last = JSON.parse(props.getProperty("LAST_BACKUP") || "null"); } catch (e) {}
+    return wrap(cb, {status:"ok", last: last, schedule: props.getProperty("BACKUP_SCHEDULE") || "off",
+      extraIds: props.getProperty("EXTRA_BACKUP_SS_IDS") || "", keep: BACKUP_KEEP_COPIES});
+  } catch (err) {
+    return wrap(cb, {status:"error", message:err.toString()});
+  }
+}
+
+// ---------- 2. शाळा-व्यापी थकबाकी (बाकी-फी) यादी — फक्त Super Master ----------
+var CLASS_ORDER_SRV = ["5th","6th","7th","8th","9th","10th"];
+function classSortKey_(c) { var i = CLASS_ORDER_SRV.indexOf((c || "").toString().trim()); return i === -1 ? 99 : i; }
+
+function doGetPendingFeesAll(p, cb) {
+  try {
+    if (p.requesterRole !== "super") return wrap(cb, {status:"error", message:"ही यादी पाहण्याचा अधिकार फक्त Super Master ला आहे."});
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var totalFee = getTotalFeePerStudent();
+    var students = getRosterCached_("", "", p.nocache === "1").data;
+
+    // प्रत्येक विद्यार्थ्याची (शैक्षणिक वर्षानुसार) सर्वात अलीकडची cumulative नोंद
+    var feeMap = {};
+    var feeSh = ss.getSheetByName("Fees");
+    if (feeSh && feeSh.getLastRow() > 1) {
+      var fRows = feeSh.getRange(2, 1, feeSh.getLastRow() - 1, 11).getValues();
+      for (var i = 0; i < fRows.length; i++) {
+        var fr = fRows[i];
+        var rg = (fr[1] || "").toString().trim().toLowerCase();
+        if (!rg) continue;
+        var yr = (fr[6] || "").toString().trim();
+        var rec = {paid: parseFloat(fr[8]) || 0, date: fmt(fr[0]) || (fr[0] || "").toString(), acYear: yr};
+        var e = feeMap[rg] || (feeMap[rg] = {byYear: {}, latest: null});
+        e.byYear[yr] = rec;
+        e.latest = rec;
+      }
+    }
+
+    var out = [], collectedAll = 0, pendingTotal = 0;
+    for (var k = 0; k < students.length; k++) {
+      var st = students[k];
+      var key = (st.regNo || "").toString().trim().toLowerCase();
+      var fe = feeMap[key];
+      var chosen = null;
+      if (fe) {
+        var sy = (st.acYear || "").toString().trim();
+        chosen = sy ? (fe.byYear[sy] || fe.byYear[""] || null) : fe.latest;
+      }
+      var paid = chosen ? chosen.paid : 0;
+      collectedAll += paid;
+      var pending = Math.max(0, totalFee - paid);
+      if (pending <= 0) continue;
+      pendingTotal += pending;
+      out.push({
+        regNo: st.regNo, fullName: st.fullName, iyatta: st.iyatta, tukdi: st.tukdi, rollNo: st.rollNo,
+        acYear: st.acYear, paid: paid, pending: pending, hasEntry: !!chosen,
+        lastPaidDate: chosen ? chosen.date : "",
+        mobile: (st.whatsappMobile || st.alternateMobile || st.contact || "").toString()
+      });
+    }
+    out.sort(function(a, b) {
+      if (b.pending !== a.pending) return b.pending - a.pending;
+      var ca = classSortKey_(a.iyatta), cb2 = classSortKey_(b.iyatta);
+      if (ca !== cb2) return ca - cb2;
+      return (a.fullName || "").toString().localeCompare((b.fullName || "").toString());
+    });
+    return wrap(cb, {status:"ok", data: out, totalFee: totalFee,
+      summary: {totalStudents: students.length, pendingCount: out.length, pendingTotal: pendingTotal, collectedTotal: collectedAll}});
+  } catch (err) {
+    return wrap(cb, {status:"error", message:err.toString()});
+  }
+}
+
+// ---------- 3. वर्ग-बढती (Promotion) Tool — फक्त Super Master ----------
+var PROMO_LOG_HEADERS = ["Timestamp","BatchId","RegNo","FullName","OldClass","OldDivision","OldAcYear","NewClass","NewAcYear","By","Undone"];
+
+function doPreviewPromotion(p, cb) {
+  try {
+    if (p.requesterRole !== "super") return wrap(cb, {status:"error", message:"वर्ग-बढतीचा अधिकार फक्त Super Master ला आहे."});
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sh = ss.getSheetByName("Students");
+    var counts = {};
+    if (sh && sh.getLastRow() > 1) {
+      var rows = sh.getRange(2, 1, sh.getLastRow() - 1, 11).getValues();
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        if (!r[10] && !r[2]) continue;
+        var c = (r[6] || "").toString().trim();
+        if (!c) continue;
+        counts[c] = (counts[c] || 0) + 1;
+      }
+    }
+    var classes = Object.keys(counts).sort(function(a, b) { return classSortKey_(a) - classSortKey_(b) || (a < b ? -1 : 1); })
+      .map(function(c) {
+        var idx = CLASS_ORDER_SRV.indexOf(c);
+        var next = (idx !== -1 && idx < CLASS_ORDER_SRV.length - 1) ? CLASS_ORDER_SRV[idx + 1] : "";
+        return {iyatta: c, count: counts[c], suggestedNext: next};
+      });
+
+    var batches = {};
+    var logSh = ss.getSheetByName("PromotionLog");
+    if (logSh && logSh.getLastRow() > 1) {
+      var lr = logSh.getRange(2, 1, logSh.getLastRow() - 1, 11).getValues();
+      for (var j = 0; j < lr.length; j++) {
+        if ((lr[j][10] || "").toString() === "Y") continue;
+        var b = lr[j][1];
+        if (!b) continue;
+        if (!batches[b]) batches[b] = {batchId: b, time: lr[j][0], count: 0, by: lr[j][9]};
+        batches[b].count++;
+      }
+    }
+    var recent = Object.keys(batches).map(function(k) { return batches[k]; }).slice(-5).reverse();
+    return wrap(cb, {status:"ok", classes: classes, recentBatches: recent, classOrder: CLASS_ORDER_SRV});
+  } catch (err) {
+    return wrap(cb, {status:"error", message:err.toString()});
+  }
+}
+
+function doPromoteStudents(d) {
+  if (d.requesterRole !== "super") return {status:"error", message:"वर्ग-बढतीचा अधिकार फक्त Super Master ला आहे."};
+  if ((d.confirm || "") !== "PROMOTE") return {status:"error", message:"खात्रीसाठी PROMOTE टाइप करणे आवश्यक आहे."};
+  var map = {};
+  try { map = JSON.parse(d.mapJson || "{}"); } catch (e) { return {status:"error", message:"वर्ग-नकाशा वाचता आला नाही."}; }
+  var newAcYear = (d.newAcYear || "").toString().trim();
+  if (!newAcYear) return {status:"error", message:"नवीन शैक्षणिक वर्ष (उदा. 2026-27) आवश्यक आहे."};
+  var keys = Object.keys(map).filter(function(k) { return map[k] && map[k] !== k; });
+  if (!keys.length) return {status:"error", message:"बढती द्यायचा किमान एक वर्ग निवडा."};
+
+  var lock = LockService.getScriptLock();
+  var locked = false;
+  try {
+    lock.waitLock(30000); locked = true;
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sh = ss.getSheetByName("Students");
+    if (!sh || sh.getLastRow() < 2) return {status:"error", message:"Students sheet रिकामी आहे."};
+    var n = sh.getLastRow() - 1;
+
+    // सुरक्षेसाठी बढतीपूर्वीची Students sheet ची प्रत (लपवलेली) याच Spreadsheet मध्ये ठेवा
+    var stamp = Utilities.formatDate(new Date(), "Asia/Kolkata", "yyyyMMdd_HHmm");
+    var bk = sh.copyTo(ss);
+    var bkName = "Students_BeforePromotion_" + stamp;
+    bk.setName(bkName);
+    bk.hideSheet();
+
+    var base = sh.getRange(2, 1, n, 11).getValues();             // A..K
+    var accYearCol = base.map(function(r) { return [r[1]]; });    // B
+    var classDiv = base.map(function(r) { return [r[6], r[7]]; }); // G:H
+    var batchId = "P" + stamp;
+    var ts = new Date().toLocaleString("en-IN");
+    var logRows = [], perClass = {};
+
+    for (var i = 0; i < n; i++) {
+      var r = base[i];
+      if (!r[10] && !r[2]) continue;
+      var oldCls = (r[6] || "").toString().trim();
+      var newCls = map[oldCls];
+      if (!newCls || newCls === oldCls) continue;
+      logRows.push([ts, batchId, r[2], r[10], oldCls, r[7], r[1], newCls, newAcYear, d.requesterUser || "", ""]);
+      classDiv[i][0] = newCls;
+      accYearCol[i][0] = newAcYear;
+      perClass[oldCls + " → " + newCls] = (perClass[oldCls + " → " + newCls] || 0) + 1;
+    }
+    if (!logRows.length) { ss.deleteSheet(bk); return {status:"error", message:"निवडलेल्या वर्गांमध्ये बढती देण्यासारखे विद्यार्थी सापडले नाहीत."}; }
+
+    sh.getRange(2, 2, n, 1).setValues(accYearCol);
+    sh.getRange(2, 7, n, 2).setValues(classDiv);
+
+    var logSh = getOrCreateSheet("PromotionLog", PROMO_LOG_HEADERS);
+    logSh.getRange(logSh.getLastRow() + 1, 1, logRows.length, PROMO_LOG_HEADERS.length).setValues(logRows);
+    invalidateRosterCache_();
+    return {rowIndex: 0, mode: "updated", count: logRows.length, ref: "promotion " + batchId,
+      extra: {batchId: batchId, backupSheet: bkName, perClass: perClass}};
+  } catch (err) {
+    return {status:"error", message:err.toString()};
+  } finally {
+    if (locked) lock.releaseLock();
+  }
+}
+
+function doUndoPromotion(d) {
+  if (d.requesterRole !== "super") return {status:"error", message:"अधिकार फक्त Super Master ला आहे."};
+  var batchId = (d.batchId || "").toString().trim();
+  if (!batchId) return {status:"error", message:"Batch ID आवश्यक आहे."};
+  var lock = LockService.getScriptLock();
+  var locked = false;
+  try {
+    lock.waitLock(30000); locked = true;
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sh = ss.getSheetByName("Students");
+    var logSh = ss.getSheetByName("PromotionLog");
+    if (!sh || !logSh || logSh.getLastRow() < 2) return {status:"error", message:"PromotionLog सापडला नाही."};
+    var n = sh.getLastRow() - 1;
+    var base = sh.getRange(2, 1, n, 11).getValues();
+    var accYearCol = base.map(function(r) { return [r[1]]; });
+    var classDiv = base.map(function(r) { return [r[6], r[7]]; });
+    var rowByReg = {};
+    for (var i = 0; i < n; i++) {
+      var rg = (base[i][2] || "").toString().trim().toLowerCase();
+      if (rg) rowByReg[rg] = i;
+    }
+    var lm = logSh.getLastRow() - 1;
+    var lr = logSh.getRange(2, 1, lm, 11).getValues();
+    var undone = [], restored = 0, skipped = 0, found = 0;
+    for (var j = 0; j < lm; j++) {
+      undone.push([lr[j][10]]);
+      if ((lr[j][1] || "").toString() !== batchId || (lr[j][10] || "").toString() === "Y") continue;
+      found++;
+      var idx = rowByReg[(lr[j][2] || "").toString().trim().toLowerCase()];
+      if (idx === undefined) { skipped++; continue; }
+      // विद्यार्थी बढतीनंतर पुन्हा हलवला/बदलला असल्यास त्याला हात लावू नका
+      if ((classDiv[idx][0] || "").toString().trim() !== (lr[j][7] || "").toString().trim()) { skipped++; continue; }
+      classDiv[idx][0] = lr[j][4];
+      if (lr[j][8]) accYearCol[idx][0] = lr[j][6];
+      undone[j][0] = "Y";
+      restored++;
+    }
+    if (!found) return {status:"error", message:"हा Batch सापडला नाही किंवा आधीच Undo झाला आहे."};
+    sh.getRange(2, 2, n, 1).setValues(accYearCol);
+    sh.getRange(2, 7, n, 2).setValues(classDiv);
+    logSh.getRange(2, 11, lm, 1).setValues(undone);
+    invalidateRosterCache_();
+    return {rowIndex: 0, mode: "updated", count: restored, ref: "undo " + batchId, extra: {restored: restored, skipped: skipped}};
+  } catch (err) {
+    return {status:"error", message:err.toString()};
+  } finally {
+    if (locked) lock.releaseLock();
+  }
+}
+
+// ---------- 4. "आज कोणी हजेरी भरली नाही" — प्रशासकीय देखरेख ----------
+function doGetAttendancePending(p, cb) {
+  try {
+    if (p.requesterRole !== "super" && p.requesterRole !== "master") {
+      return wrap(cb, {status:"error", message:"ही माहिती पाहण्याचा अधिकार Super Master / Master ला आहे."});
+    }
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var date = ISO_DATE_RE.test((p.date || "").toString().trim()) ? p.date.toString().trim() : todayStr();
+    var dm = ISO_DATE_RE.exec(date);
+    var isSunday = new Date(parseInt(dm[1], 10), parseInt(dm[2], 10) - 1, parseInt(dm[3], 10)).getDay() === 0;
+
+    // अपेक्षित वर्ग-शिक्षक: Users sheet मधील role=teacher + AssignedClass
+    var teachers = [];
+    var uSh = ss.getSheetByName("Users");
+    if (uSh && uSh.getLastRow() > 1) {
+      var uRows = uSh.getRange(2, 1, uSh.getLastRow() - 1, 5).getValues();
+      for (var i = 0; i < uRows.length; i++) {
+        var u = uRows[i];
+        if ((u[2] || "").toString().trim() !== "teacher") continue;
+        var parts = (u[4] || "").toString().split("|");
+        if (!parts[0]) continue;
+        teachers.push({username: u[0], label: u[3] || u[0], iyatta: parts[0].trim(), tukdi: (parts[1] || "").trim()});
+      }
+    }
+
+    // हजेरी भरल्याची नोंद: (अ) Log sheet चा शेवटचा भाग — सर्व Save नोंदवतो, शून्य-अनुपस्थित Save सुद्धा
+    var marked = {};
+    var logSh = ss.getSheetByName("Log");
+    if (logSh && logSh.getLastRow() > 1) {
+      var lastRow = logSh.getLastRow();
+      var cnt = Math.min(lastRow - 1, 4000);
+      var lRows = logSh.getRange(lastRow - cnt + 1, 1, cnt, 5).getValues();
+      for (var j = 0; j < lRows.length; j++) {
+        var lr = lRows[j];
+        if ((lr[3] || "").toString() !== "saveAttendance") continue;
+        var ref = (lr[4] || "").toString();
+        var sp = ref.lastIndexOf(" ");
+        if (sp < 1 || ref.slice(sp + 1) !== date) continue;
+        var tm = lr[0] instanceof Date ? Utilities.formatDate(lr[0], "Asia/Kolkata", "HH:mm") : (lr[0] || "").toString();
+        marked[ref.slice(0, sp)] = {by: lr[1], time: tm};
+      }
+    }
+    // (आ) त्या दिवशी अनुपस्थित विद्यार्थी नोंदवलेले वर्गही "भरले" समजा
+    var attRows = readAttendanceRows_(date, date);
+    for (var a = 0; a < attRows.length; a++) {
+      if (fmt(attRows[a][1]) !== date) continue;
+      var k2 = (attRows[a][2] || "").toString().trim() + "-" + (attRows[a][3] || "").toString().trim();
+      if (!marked[k2]) marked[k2] = {by: attRows[a][8], time: ""};
+    }
+
+    var pending = [], done = [], covered = {};
+    teachers.forEach(function(t) {
+      var key = t.iyatta + "-" + t.tukdi;
+      covered[key] = true;
+      var m = marked[key];
+      if (m) done.push({username: t.username, label: t.label, iyatta: t.iyatta, tukdi: t.tukdi, by: m.by, time: m.time});
+      else pending.push({username: t.username, label: t.label, iyatta: t.iyatta, tukdi: t.tukdi});
+    });
+    pending.sort(function(a, b) { return classSortKey_(a.iyatta) - classSortKey_(b.iyatta) || (a.tukdi < b.tukdi ? -1 : 1); });
+
+    // Students मध्ये आहेत पण कोणत्याही वर्ग-शिक्षकाला नेमलेले नाहीत असे वर्ग
+    var unassigned = [], seen = {};
+    var stSh = ss.getSheetByName("Students");
+    if (stSh && stSh.getLastRow() > 1) {
+      var cd = stSh.getRange(2, 7, stSh.getLastRow() - 1, 2).getValues();
+      for (var c = 0; c < cd.length; c++) {
+        var ci = (cd[c][0] || "").toString().trim(), ct = (cd[c][1] || "").toString().trim();
+        if (!ci) continue;
+        var ck = ci + "-" + ct;
+        if (seen[ck]) continue;
+        seen[ck] = true;
+        if (!covered[ck]) unassigned.push({iyatta: ci, tukdi: ct});
+      }
+    }
+    return wrap(cb, {status:"ok", date: date, isSunday: isSunday, totalExpected: teachers.length,
+      pending: pending, done: done, unassigned: unassigned});
+  } catch (err) {
+    return wrap(cb, {status:"error", message:err.toString()});
   }
 }

@@ -59,6 +59,7 @@
   <button class="navbtn master-only" data-page="maintenance" onclick="showPage('maintenance',this);feeLoadCurrentTotal();">🔧 मेंटेनन्स</button>
   <button class="navbtn master-only" data-page="classinfo" onclick="showPage('classinfo',this)">🏫 वर्ग माहिती</button>
   <button class="navbtn master-only" data-page="report" onclick="showPage('report',this);rpInit();">📑 रिपोर्ट</button>
+  <button class="navbtn super-only" data-page="superadmin" onclick="showPage('superadmin',this)">🛡️ Super Admin</button>
   <button class="navbtn" data-page="teacher" onclick="showPage('teacher',this)">🏫 वर्ग शिक्षक</button>
   <span class="user-chip" id="authUserChip">User</span>
   <button class="logout-btn" onclick="logoutUser()">Logout</button>
@@ -67,7 +68,7 @@
 <!-- CONFIG BAR -->
 <div class="cfgbar cfgbar-script" id="urlConfigBar">
   <label>⚙️ Google Sheets URL:</label>
-  <input type="url" id="sheetsUrl" placeholder="https://script.google.com/macros/s/YOUR_ID/exec" oninput="saveUrl()">
+  <input type="url" id="sheetsUrl" placeholder="https://script.google.com/macros/s/AKfycbyaS_ZBHm1H9XEAVsfrMhyIDc4rqPRIHDWkp4a14pYnW6ni-y4lVj3AEbd_zcIaR1fP/exec" oninput="saveUrl()">
   <button onclick="testConnection()" style="background:#1a8a3a;border:none;border-radius:5px;padding:7px 14px;color:#fff;font-weight:700;cursor:pointer;font-size:12px">🔧 Test</button>
   <button onclick="bulkLoadAll()" id="bulkLoadBtn" style="background:#1a4a7a;border:none;border-radius:5px;padding:7px 14px;color:#fff;font-weight:700;cursor:pointer;font-size:12px">⚡ सर्व Load करा</button>
   <span class="hint">Apps Script Web App URL — सर्व pages साठी एकच URL वापरतो</span>
@@ -311,7 +312,20 @@
       <h3>रिपोर्ट</h3>
       <p>जात/प्रवर्ग/वर्ग/फी/मोबाईल/पत्ता/लिंग निहाय यादी — A4 PDF Export</p>
     </div>
+    <div class="dcard super-only" data-page="superadmin" onclick="showPage('superadmin',this)">
+      <div class="icon">🛡️</div>
+      <h3>Super Admin</h3>
+      <p>थकबाकी यादी, वर्ग-बढती (Promotion), आपोआप Backup</p>
     </div>
+    </div>
+
+  <!-- ===== आज कोणी हजेरी भरली नाही (Super Master / Master) — V19.35 ===== -->
+  <div class="card master-only" style="margin-bottom:16px">
+    <div class="card-header"><div>📋 आजची हजेरी — कोणी भरली नाही?</div><button class="btn btn-blue btn-sm" onclick="mstLoadAttendancePending()">🔄 Refresh</button></div>
+    <div class="card-body">
+      <div id="mst_attPending" style="font-size:13px">⏳ Load होत आहे...</div>
+    </div>
+  </div>
 
   <!-- ===== आज वाढदिवस असलेले विद्यार्थी (Super Master / Master) — V19.34 ===== -->
   <div class="card master-only" style="margin-bottom:16px">
@@ -1171,6 +1185,61 @@
 </div>
 
 <!-- ==================== रिपोर्ट PAGE (Super Master / Master — सर्व वर्ग; Class Teacher — फक्त स्वतःचा वर्ग) ==================== -->
+<!-- ==================== SUPER ADMIN PAGE (V19.35 — फक्त Super Master) ==================== -->
+<div id="pg-superadmin" class="page">
+  <div class="sec-title" style="margin-bottom:10px">🛡️ Super Admin</div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-header"><div><h2>💰 शाळा-व्यापी फी थकबाकी यादी</h2><p>सर्वाधिक थकबाकी असलेले विद्यार्थी प्रथम — संपूर्ण शाळेचे; Excel / PDF Export</p></div></div>
+    <div class="card-body">
+      <div class="frow" style="gap:10px;flex-wrap:wrap;margin-bottom:10px">
+        <button class="btn btn-blue" onclick="saLoadPendingFees()">📋 यादी तयार करा</button>
+        <button class="btn btn-green" id="sa_pfXlsBtn" onclick="saExportPendingXlsx()" disabled>📊 Excel</button>
+        <button class="btn btn-green" id="sa_pfPdfBtn" onclick="saExportPendingPdf()" disabled>📥 PDF</button>
+      </div>
+      <div id="sa_pfSummary" style="font-size:13px;margin-bottom:8px"></div>
+      <div id="sa_pfStatus" style="font-size:12.5px;color:#cfd8e8;margin-bottom:8px"></div>
+      <div style="overflow-x:auto;max-height:420px;overflow-y:auto">
+        <table class="hist-table"><thead><tr><th>अ.क्र.</th><th>नाव</th><th>वर्ग</th><th>Roll</th><th>जमा</th><th>बाकी</th><th>मोबाईल</th></tr></thead>
+        <tbody id="sa_pfTbody"><tr><td colspan="7">"यादी तयार करा" दाबा.</td></tr></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;border:2px solid #e8a020">
+    <div class="card-header"><div><h2>🎓 वर्ग-बढती (Promotion) — शैक्षणिक वर्ष संपताना</h2>
+      <p>सर्व विद्यार्थ्यांना एकाच वेळी पुढच्या वर्गात हलवा. तुकडी तीच राहते. शैक्षणिक वर्षही बदलते, त्यामुळे नवीन वर्षाची फी ०₹ पासून सुरू होते.</p></div></div>
+    <div class="card-body">
+      <div style="font-size:12px;color:#a06000;margin-bottom:10px">⚠️ 10th ला डिफॉल्ट बढती नाही (LC द्यायचा विषय). बढतीपूर्वी Students ची लपवलेली प्रत आपोआप तयार होते व खालून Undo करता येतो. तुकड्या बदलायच्या असल्यास बढतीनंतर मेंटेनन्स वापरा.</div>
+      <div id="sa_promoRows" style="margin-bottom:12px">⏳ Load होत आहे...</div>
+      <div class="frow" style="gap:10px;flex-wrap:wrap;align-items:flex-end">
+        <div class="fg w150"><label>नवीन शैक्षणिक वर्ष</label><input id="sa_promoYear" placeholder="उदा. 2027-28" maxlength="7"></div>
+        <div class="fg w150"><label>खात्री: PROMOTE टाइप करा</label><input id="sa_promoConfirm" placeholder="PROMOTE"></div>
+        <div class="fg" style="flex:0 0 auto"><button class="btn btn-gold" onclick="promoRun()">🎓 बढती द्या</button></div>
+      </div>
+      <div id="sa_promoStatus" style="font-size:12.5px;margin-top:10px;color:#cfd8e8"></div>
+      <div id="sa_promoBatches" style="margin-top:12px;font-size:12.5px"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-header"><div><h2>💾 आपोआप Backup (Google Drive)</h2><p>Spreadsheet(s) ची प्रत रोज/आठवड्याला आपोआप Drive मध्ये</p></div></div>
+    <div class="card-body">
+      <div id="sa_bkInfo" style="font-size:13px;margin-bottom:12px">⏳ Load होत आहे...</div>
+      <div class="frow" style="gap:10px;flex-wrap:wrap;align-items:flex-end">
+        <div class="fg w180"><label>वेळापत्रक</label>
+          <select id="sa_bkMode" style="padding:7px 10px;border-radius:var(--r);border:1.5px solid var(--pb);background:var(--peach);font-family:inherit;width:100%">
+            <option value="daily">रोज</option><option value="weekly">दर रविवारी</option><option value="off">बंद</option>
+          </select></div>
+        <div class="fg" style="min-width:260px;flex:1"><label>इतर Spreadsheet ID (comma ने वेगळे) — उदा. Transactions Sheet</label><input id="sa_bkExtra" placeholder="ID1,ID2"></div>
+        <div class="fg" style="flex:0 0 auto"><button class="btn btn-gold" onclick="saSaveBackupSchedule()">💾 जतन करा</button></div>
+        <div class="fg" style="flex:0 0 auto"><button class="btn btn-blue" onclick="saRunBackupNow()">▶️ आत्ताच Backup घ्या</button></div>
+      </div>
+      <div id="sa_bkStatus" style="font-size:12.5px;margin-top:10px;color:#cfd8e8"></div>
+    </div>
+  </div>
+</div>
+
 <div id="pg-report" class="page">
   <div class="sec-title" style="margin-bottom:10px">📑 रिपोर्ट</div>
 
@@ -2402,6 +2471,8 @@ function getPhotoUrlByRegNo(regNo) {
 </details>
 
 
+
+<div id="pendingSavesBadge" onclick="pendingFlush(true)" style="display:none"></div>
 
 <!-- ===== SAVE NOTIFICATION POPUP ===== -->
 
