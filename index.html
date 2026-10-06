@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>श्री.गोविंदराम सेक्सरिया हायस्कूल, पाचोरा</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1a2a4a">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;700&family=Noto+Serif+Devanagari:wght@400;600;700;900&family=Noto+Sans+Devanagari:wght@400;600;700&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -60,6 +64,7 @@
   <button class="navbtn master-only" data-page="classinfo" onclick="showPage('classinfo',this)">🏫 वर्ग माहिती</button>
   <button class="navbtn master-only" data-page="report" onclick="showPage('report',this);rpInit();">📑 रिपोर्ट</button>
   <button class="navbtn super-only" data-page="superadmin" onclick="showPage('superadmin',this)">🛡️ Super Admin</button>
+  <button class="navbtn master-only" data-page="attanalytics" onclick="showPage('attanalytics',this)">📈 हजेरी विश्लेषण</button>
   <button class="navbtn" data-page="teacher" onclick="showPage('teacher',this)">🏫 वर्ग शिक्षक</button>
   <span class="user-chip" id="authUserChip">User</span>
   <button class="logout-btn" onclick="logoutUser()">Logout</button>
@@ -68,7 +73,7 @@
 <!-- CONFIG BAR -->
 <div class="cfgbar cfgbar-script" id="urlConfigBar">
   <label>⚙️ Google Sheets URL:</label>
-  <input type="url" id="sheetsUrl" placeholder="https://script.google.com/macros/s/AKfycbyaS_ZBHm1H9XEAVsfrMhyIDc4rqPRIHDWkp4a14pYnW6ni-y4lVj3AEbd_zcIaR1fP/exec" oninput="saveUrl()">
+  <input type="url" id="sheetsUrl" placeholder="https://script.google.com/macros/s/YOUR_ID/exec" oninput="saveUrl()">
   <button onclick="testConnection()" style="background:#1a8a3a;border:none;border-radius:5px;padding:7px 14px;color:#fff;font-weight:700;cursor:pointer;font-size:12px">🔧 Test</button>
   <button onclick="bulkLoadAll()" id="bulkLoadBtn" style="background:#1a4a7a;border:none;border-radius:5px;padding:7px 14px;color:#fff;font-weight:700;cursor:pointer;font-size:12px">⚡ सर्व Load करा</button>
   <span class="hint">Apps Script Web App URL — सर्व pages साठी एकच URL वापरतो</span>
@@ -311,6 +316,11 @@
       <div class="icon">📑</div>
       <h3>रिपोर्ट</h3>
       <p>जात/प्रवर्ग/वर्ग/फी/मोबाईल/पत्ता/लिंग निहाय यादी — A4 PDF Export</p>
+    </div>
+    <div class="dcard master-only" data-page="attanalytics" onclick="showPage('attanalytics',this)">
+      <div class="icon">📈</div>
+      <h3>हजेरी विश्लेषण</h3>
+      <p>महिन्याची उपस्थिती %, सलग गैरहजर विद्यार्थी — PDF व पालकांना WhatsApp</p>
     </div>
     <div class="dcard super-only" data-page="superadmin" onclick="showPage('superadmin',this)">
       <div class="icon">🛡️</div>
@@ -1185,9 +1195,35 @@
 </div>
 
 <!-- ==================== रिपोर्ट PAGE (Super Master / Master — सर्व वर्ग; Class Teacher — फक्त स्वतःचा वर्ग) ==================== -->
+<!-- ==================== हजेरी विश्लेषण (Master / Super) — V19.36 ==================== -->
+<div id="pg-attanalytics" class="page">
+  <div class="sec-title" style="margin-bottom:10px">📈 हजेरी विश्लेषण</div>
+  <div class="card">
+    <div class="card-header"><div><h2>मासिक उपस्थिती व सलग गैरहजेरी</h2><p>कार्यदिवस = त्या वर्गाची हजेरी Save झालेले दिवस. भरायला विसरलेला दिवस मोजला जात नाही.</p></div></div>
+    <div class="card-body">
+      <div class="frow" style="gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
+        <div class="fg w180"><label>वर्ग / तुकडी</label><select id="atta_class" style="padding:7px 10px;border-radius:var(--r);border:1.5px solid var(--pb);background:var(--peach);font-family:inherit;width:100%"><option value="">⏳ Load होत आहे...</option></select></div>
+        <div class="fg w150"><label>महिना</label><input id="atta_month" type="month"></div>
+        <div class="fg w150"><label>सलग दिवस (किमान)</label><input id="atta_run" type="number" min="2" max="10" value="3"></div>
+        <div class="fg" style="flex:0 0 auto"><button class="btn btn-blue" onclick="attaLoad()">📊 विश्लेषण पहा</button></div>
+        <div class="fg" style="flex:0 0 auto"><button class="btn btn-green" id="atta_pdfBtn" onclick="attaExportPdf('atta')" disabled>📥 PDF</button></div>
+      </div>
+      <div id="atta_out" style="font-size:13px">वर्ग व महिना निवडून "विश्लेषण पहा" दाबा.</div>
+    </div>
+  </div>
+</div>
+
 <!-- ==================== SUPER ADMIN PAGE (V19.35 — फक्त Super Master) ==================== -->
 <div id="pg-superadmin" class="page">
   <div class="sec-title" style="margin-bottom:10px">🛡️ Super Admin</div>
+
+  <div class="card" style="margin-bottom:16px;border:2px solid #c02020">
+    <div class="card-header"><div><h2>🔐 सुरक्षा स्थिती</h2><p>Server-side Login व Token — Role बनावट पाठवून होणारा गैरवापर रोखण्यासाठी</p></div></div>
+    <div class="card-body">
+      <div id="sa_secInfo" style="font-size:13px">⏳ Load होत आहे...</div>
+      <div style="font-size:12px;opacity:.75;margin-top:10px">सक्रिय करण्याचे टप्पे: (१) Apps Script Editor मध्ये setSuperCredentials('user_s','नवा-पासवर्ड') Run करा → (२) नवीन Deploy → (३) येथे Login करून "Token ने सुरक्षित" दिसते का तपासा → (४) enableAuthEnforcement() Run करा → (५) script.js मध्ये ALLOW_LEGACY_LOGIN = false करा.</div>
+    </div>
+  </div>
 
   <div class="card" style="margin-bottom:16px">
     <div class="card-header"><div><h2>💰 शाळा-व्यापी फी थकबाकी यादी</h2><p>सर्वाधिक थकबाकी असलेले विद्यार्थी प्रथम — संपूर्ण शाळेचे; Excel / PDF Export</p></div></div>
@@ -1200,8 +1236,8 @@
       <div id="sa_pfSummary" style="font-size:13px;margin-bottom:8px"></div>
       <div id="sa_pfStatus" style="font-size:12.5px;color:#cfd8e8;margin-bottom:8px"></div>
       <div style="overflow-x:auto;max-height:420px;overflow-y:auto">
-        <table class="hist-table"><thead><tr><th>अ.क्र.</th><th>नाव</th><th>वर्ग</th><th>Roll</th><th>जमा</th><th>बाकी</th><th>मोबाईल</th></tr></thead>
-        <tbody id="sa_pfTbody"><tr><td colspan="7">"यादी तयार करा" दाबा.</td></tr></tbody></table>
+        <table class="hist-table"><thead><tr><th>अ.क्र.</th><th>नाव</th><th>वर्ग</th><th>Roll</th><th>जमा</th><th>बाकी</th><th>मोबाईल</th><th>📲 WhatsApp</th></tr></thead>
+        <tbody id="sa_pfTbody"><tr><td colspan="8">"यादी तयार करा" दाबा.</td></tr></tbody></table>
       </div>
     </div>
   </div>
@@ -1223,6 +1259,29 @@
   </div>
 
   <div class="card" style="margin-bottom:16px">
+    <div class="card-header"><div><h2>🧹 वर्षअखेर साफसफाई</h2><p>10th चे विद्यार्थी Pass-out Archive मध्ये हलवा व बढतीनंतर Roll No. पुन्हा क्रमांकित करा</p></div></div>
+    <div class="card-body">
+      <div style="font-weight:700;margin-bottom:6px">📦 Pass-out Archive (उदा. 10th)</div>
+      <div class="frow" style="gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:6px">
+        <div class="fg w150"><label>वर्ग</label><select id="sa_arClass" style="padding:7px 10px;border-radius:var(--r);border:1.5px solid var(--pb);background:var(--peach);font-family:inherit;width:100%"></select></div>
+        <div class="fg w150"><label>Archive नाव (वर्ष)</label><input id="sa_arLabel" placeholder="उदा. 2026-27" maxlength="20"></div>
+        <div class="fg w150"><label>खात्री: ARCHIVE टाइप करा</label><input id="sa_arConfirm" placeholder="ARCHIVE"></div>
+        <div class="fg" style="flex:0 0 auto"><button class="btn btn-gold" onclick="saArchiveRun()">📦 Archive करा</button></div>
+      </div>
+      <div id="sa_arBatches" style="font-size:12.5px;margin-bottom:16px"></div>
+      <div style="font-weight:700;margin:12px 0 6px">🔢 Roll No. पुन्हा क्रमांक (प्रत्येक तुकडीत १ पासून)</div>
+      <div id="sa_rnClasses" style="margin-bottom:8px;font-size:13px"></div>
+      <div class="frow" style="gap:10px;flex-wrap:wrap;align-items:flex-end">
+        <div class="fg w180"><label>क्रम</label><select id="sa_rnOrder" style="padding:7px 10px;border-radius:var(--r);border:1.5px solid var(--pb);background:var(--peach);font-family:inherit;width:100%">
+          <option value="name">नावानुसार (अकारविल्हे)</option><option value="boys_first">आधी मुले, मग मुली</option><option value="girls_first">आधी मुली, मग मुले</option></select></div>
+        <div class="fg w150"><label>खात्री: RENUMBER टाइप करा</label><input id="sa_rnConfirm" placeholder="RENUMBER"></div>
+        <div class="fg" style="flex:0 0 auto"><button class="btn btn-gold" onclick="saRenumberRun()">🔢 Roll No. बदला</button></div>
+      </div>
+      <div id="sa_cleanStatus" style="font-size:12.5px;margin-top:10px;color:#cfd8e8"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
     <div class="card-header"><div><h2>💾 आपोआप Backup (Google Drive)</h2><p>Spreadsheet(s) ची प्रत रोज/आठवड्याला आपोआप Drive मध्ये</p></div></div>
     <div class="card-body">
       <div id="sa_bkInfo" style="font-size:13px;margin-bottom:12px">⏳ Load होत आहे...</div>
@@ -1232,8 +1291,10 @@
             <option value="daily">रोज</option><option value="weekly">दर रविवारी</option><option value="off">बंद</option>
           </select></div>
         <div class="fg" style="min-width:260px;flex:1"><label>इतर Spreadsheet ID (comma ने वेगळे) — उदा. Transactions Sheet</label><input id="sa_bkExtra" placeholder="ID1,ID2"></div>
+        <div class="fg" style="min-width:220px;flex:1"><label>Backup अपयशाची सूचना — Email</label><input id="sa_bkEmail" type="email" placeholder="रिकामे = खाते-मालकाचा Email"></div>
         <div class="fg" style="flex:0 0 auto"><button class="btn btn-gold" onclick="saSaveBackupSchedule()">💾 जतन करा</button></div>
         <div class="fg" style="flex:0 0 auto"><button class="btn btn-blue" onclick="saRunBackupNow()">▶️ आत्ताच Backup घ्या</button></div>
+        <div class="fg" style="flex:0 0 auto"><button class="btn btn-orange" onclick="saArchiveLogNow()">🗄️ जुने Log Archive (९० दिवस+)</button></div>
       </div>
       <div id="sa_bkStatus" style="font-size:12.5px;margin-top:10px;color:#cfd8e8"></div>
     </div>
@@ -1353,6 +1414,7 @@
     <button class="tch-tabbtn" data-tch="diary" onclick="tchShowTab('diary')">📔 Student Diary</button>
     <button class="tch-tabbtn" data-tch="fees" onclick="tchShowTab('fees')">💰 Fees</button>
     <button class="tch-tabbtn" data-tch="notices" onclick="tchShowTab('notices')">🔔 सूचना</button>
+    <button class="tch-tabbtn" data-tch="ana" onclick="tchShowTab('ana')">📈 विश्लेषण</button>
     <button class="tch-tabbtn" data-tch="maint" onclick="tchShowTab('maint')">🔧 मेंटेनन्स</button>
   </div>
 
@@ -1455,6 +1517,21 @@
   </div>
 
   <!-- 📔 STUDENT DIARY -->
+  <div class="tch-panel" id="tchp-ana">
+    <div class="card">
+      <div class="card-header"><div><h2>📈 माझ्या वर्गाची मासिक उपस्थिती</h2><p>उपस्थिती %, सलग गैरहजर विद्यार्थी — पालकांना WhatsApp व PDF</p></div></div>
+      <div class="card-body">
+        <div class="frow" style="gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
+          <div class="fg w150"><label>महिना</label><input id="tchana_month" type="month"></div>
+          <div class="fg w150"><label>सलग दिवस (किमान)</label><input id="tchana_run" type="number" min="2" max="10" value="3"></div>
+          <div class="fg" style="flex:0 0 auto"><button class="btn btn-blue" onclick="tchAnaLoad()">📊 विश्लेषण पहा</button></div>
+          <div class="fg" style="flex:0 0 auto"><button class="btn btn-green" id="tchana_pdfBtn" onclick="attaExportPdf('tchana')" disabled>📥 PDF</button></div>
+        </div>
+        <div id="tchana_out" style="font-size:13px">महिना निवडून "विश्लेषण पहा" दाबा.</div>
+      </div>
+    </div>
+  </div>
+
   <div class="tch-panel" id="tchp-diary">
     <div class="frow" style="gap:10px;margin-bottom:10px;align-items:flex-end">
       <div class="fg" style="min-width:200px;flex:1">
@@ -2473,6 +2550,7 @@ function getPhotoUrlByRegNo(regNo) {
 
 
 <div id="pendingSavesBadge" onclick="pendingFlush(true)" style="display:none"></div>
+<button id="pwaInstallBtn" onclick="pwaInstall()" style="display:none">📲 अॅप म्हणून Install करा</button>
 
 <!-- ===== SAVE NOTIFICATION POPUP ===== -->
 

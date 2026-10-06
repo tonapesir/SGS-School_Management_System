@@ -87,6 +87,10 @@ function writeRow(sh, rowNum, row) {
 
 function doPost(e) {
   var p = e.parameter || {};
+  var authErrP = applyAuth_(p);
+  if (authErrP) {
+    return ContentService.createTextOutput(JSON.stringify(authErrP)).setMimeType(ContentService.MimeType.JSON);
+  }
   if (p.action === "uploadPhoto") {
     var photoResult = handlePhotoUpload(p);
     return ContentService.createTextOutput(JSON.stringify(photoResult))
@@ -99,6 +103,11 @@ function doGet(e) {
   var p = e.parameter || {};
   var cb = p.callback || "";
   if (!p.action && (p.regNo || p.studentId || p.firstName)) p.action = "upsert";
+  var authErr = applyAuth_(p);
+  if (authErr) return wrap(cb, authErr);
+  if (p.action === "login") {
+    return doLogin(p, cb);
+  }
   if (p.action === "verify") {
     return doVerifyPage(p);
   }
@@ -211,8 +220,16 @@ function doGet(e) {
   if (p.action === "getBackupStatus") {
     return doGetBackupStatus(p, cb);
   }
+  if (p.action === "getAttendanceAnalytics") {
+    return doGetAttendanceAnalytics(p, cb);
+  }
+  if (p.action === "getSecurityStatus") {
+    return doGetSecurityStatus(p, cb);
+  }
   if (p.action === "promoteStudents" || p.action === "undoPromotion" ||
-      p.action === "runBackup" || p.action === "setBackupSchedule") {
+      p.action === "runBackup" || p.action === "setBackupSchedule" ||
+      p.action === "archivePassedOut" || p.action === "restorePassedOut" ||
+      p.action === "renumberRolls" || p.action === "archiveLogNow") {
     return handleAction(p, cb);
   }
   var a = p.action || "";
@@ -328,6 +345,14 @@ function handleAction(d, cb) {
       result = doUpdateClassDivision(d);
     } else if (action === "saveTotalFee") {
       result = doSaveTotalFee(d);
+    } else if (action === "archivePassedOut") {
+      result = doArchivePassedOut(d);
+    } else if (action === "restorePassedOut") {
+      result = doRestorePassedOut(d);
+    } else if (action === "renumberRolls") {
+      result = doRenumberRolls(d);
+    } else if (action === "archiveLogNow") {
+      result = doArchiveLogNow(d);
     } else if (action === "promoteStudents") {
       result = doPromoteStudents(d);
     } else if (action === "undoPromotion") {
@@ -342,7 +367,8 @@ function handleAction(d, cb) {
     if (result && result.status === "error") return wrap(cb, result);
     // Students sheet बदलणाऱ्या कृतींनंतर Roster Cache रद्द करा
     if (action === "save" || action === "update" || action === "upsert" || action === "updateClassDivision" ||
-        action === "saveStudentContact" || action === "promoteStudents" || action === "undoPromotion") {
+        action === "saveStudentContact" || action === "promoteStudents" || action === "undoPromotion" ||
+        action === "archivePassedOut" || action === "restorePassedOut" || action === "renumberRolls") {
       invalidateRosterCache_();
     }
     logAudit(d.auditUser || d.requesterUser, d.auditRole || d.requesterRole, action, result.serial || d.regNo || d.stxt1 || result.ref || "");
@@ -512,6 +538,9 @@ function getUsersSheet() {
 
 function doGetUsers(p, cb) {
   try {
+    if (p._authed && p.requesterRole !== "super") {
+      return wrap(cb, {status:"error", message:"User यादी पाहण्याचा अधिकार फक्त Super Master ला आहे."});
+    }
     var sh = getUsersSheet();
     var rows = sh.getRange(2, 1, sh.getLastRow()-1, 5).getValues();
     var out = [];
@@ -570,6 +599,7 @@ function doChangePassword(p, cb) {
   try {
     var sh = getUsersSheet();
     var username = (p.username||"").toString().trim();
+    if (p._authed && p.requesterRole !== "super") username = (p.requesterUser || "").toString().trim(); // स्वतःचाच Password बदलता येतो
     var rowToWrite = findRowByKey(sh, 1, username);
     if (!rowToWrite) return wrap(cb, {status:"error", message:"User सापडला नाही."});
     var current = sh.getRange(rowToWrite, 2).getValue();
@@ -1787,6 +1817,12 @@ function backupSpreadsheets() {
     result.errors.push(e.toString());
   }
   result.ok = result.errors.length === 0 && result.files.length > 0;
+  if (result.ok) {
+    // Backup यशस्वी झाल्यावरच जुन्या Log नोंदी (९० दिवसांपेक्षा जुन्या) Archive करा
+    try { result.logArchived = archiveOldLog_(90); } catch (eLg) { result.logArchived = -1; }
+  } else {
+    notifyBackupFailure_(result);
+  }
   props.setProperty("LAST_BACKUP", JSON.stringify(result));
   logAudit("system", "trigger", "autoBackup", result.ok ? (result.files.length + " प्रती") : ("त्रुटी: " + result.errors.join(" | ")));
   return result;
@@ -1822,9 +1858,25 @@ function doRunBackup(d) {
   return {rowIndex:0, mode:"created", count: res.files.length, ref:"backup", extra: res};
 }
 
+function notifyBackupFailure_(result) {
+  try {
+    var to = PropertiesService.getScriptProperties().getProperty("BACKUP_ALERT_EMAIL") || "";
+    if (!to) { try { to = Session.getEffectiveUser().getEmail(); } catch (e0) {} }
+    if (!to) return;
+    MailApp.sendEmail(to, "⚠️ SGS School System — Backup अयशस्वी",
+      "स्वयंचलित Backup अयशस्वी झाला.\n\nवेळ: " + result.time + "\nत्रुटी:\n" + (result.errors || []).join("\n") +
+      "\n\nकृपया Apps Script Editor मध्ये backupSpreadsheets एकदा Run करून परवानग्या/जागा तपासा.");
+  } catch (e) { /* Mail पाठवता न आल्यास Backup status मध्ये त्रुटी दिसतेच */ }
+}
+
 function doSetBackupSchedule(d) {
   if (d.requesterRole !== "super") return {status:"error", message:"Backup चा अधिकार फक्त Super Master ला आहे."};
   try {
+    if (typeof d.alertEmail === "string") {
+      var em = d.alertEmail.trim();
+      if (em && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) return {status:"error", message:"Email चुकीचा आहे."};
+      PropertiesService.getScriptProperties().setProperty("BACKUP_ALERT_EMAIL", em);
+    }
     if (typeof d.extraIds === "string") {
       var cleaned = d.extraIds.split(",").map(function(x){ return x.trim(); }).filter(function(x){ return !!x; }).join(",");
       setExtraBackupSpreadsheetIds(cleaned);
@@ -1833,7 +1885,7 @@ function doSetBackupSchedule(d) {
     if (mode === "daily") setupDailyBackupTrigger();
     else if (mode === "weekly") setupWeeklyBackupTrigger();
     else if (mode === "off") removeBackupTriggers();
-    else if (!d.extraIds && d.extraIds !== "") return {status:"error", message:"अपेक्षित mode: daily / weekly / off"};
+    else if (mode) return {status:"error", message:"अपेक्षित mode: daily / weekly / off"};
     return {rowIndex:0, mode:"updated", ref:"backupSchedule:" + mode};
   } catch (err) {
     return {status:"error", message:"Trigger सेट करता आला नाही — Apps Script Editor मध्ये setupDailyBackupTrigger एकदा Run करून परवानगी द्या. (" + err.toString() + ")"};
@@ -1847,7 +1899,8 @@ function doGetBackupStatus(p, cb) {
     var last = null;
     try { last = JSON.parse(props.getProperty("LAST_BACKUP") || "null"); } catch (e) {}
     return wrap(cb, {status:"ok", last: last, schedule: props.getProperty("BACKUP_SCHEDULE") || "off",
-      extraIds: props.getProperty("EXTRA_BACKUP_SS_IDS") || "", keep: BACKUP_KEEP_COPIES});
+      extraIds: props.getProperty("EXTRA_BACKUP_SS_IDS") || "", keep: BACKUP_KEEP_COPIES,
+      alertEmail: props.getProperty("BACKUP_ALERT_EMAIL") || ""});
   } catch (err) {
     return wrap(cb, {status:"error", message:err.toString()});
   }
@@ -1955,7 +2008,7 @@ function doPreviewPromotion(p, cb) {
       }
     }
     var recent = Object.keys(batches).map(function(k) { return batches[k]; }).slice(-5).reverse();
-    return wrap(cb, {status:"ok", classes: classes, recentBatches: recent, classOrder: CLASS_ORDER_SRV});
+    return wrap(cb, {status:"ok", classes: classes, recentBatches: recent, classOrder: CLASS_ORDER_SRV, archiveBatches: listArchiveBatches_()});
   } catch (err) {
     return wrap(cb, {status:"error", message:err.toString()});
   }
@@ -1986,6 +2039,7 @@ function doPromoteStudents(d) {
     var bkName = "Students_BeforePromotion_" + stamp;
     bk.setName(bkName);
     bk.hideSheet();
+    pruneHiddenBackups_("Students_BeforePromotion_", 5);
 
     var base = sh.getRange(2, 1, n, 11).getValues();             // A..K
     var accYearCol = base.map(function(r) { return [r[1]]; });    // B
@@ -2150,5 +2204,506 @@ function doGetAttendancePending(p, cb) {
       pending: pending, done: done, unassigned: unassigned});
   } catch (err) {
     return wrap(cb, {status:"error", message:err.toString()});
+  }
+}
+
+
+// =====================================================================
+// ===== V19.36 — सुरक्षा: Server-side Login + स्वाक्षरी केलेला Token =====
+// =====================================================================
+// पूर्वी Role फक्त browser पाठवत होता (कोणीही requesterRole=super पाठवू शकत होता). आता Login ला server Username/Password तपासतो
+// व HMAC ने स्वाक्षरी केलेला Token देतो; पुढील प्रत्येक विनंतीत Token तपासून Role server स्वतः ठरवतो.
+// स्थलांतर: (१) setSuperCredentials('user_s','पासवर्ड') (२) नवीन Deploy (३) Login चाचणी (४) enableAuthEnforcement()
+var TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
+var AUTH_PUBLIC_ACTIONS = {ping:1, login:1, verify:1};
+var TEACHER_CLASS_ACTIONS = {getClassStudents:1, getTeacherDashboard:1, saveAttendance:1, getAttendance:1, getAttendanceAnalytics:1};
+var _authSecretMem = null;
+
+function authSecret_() {
+  if (_authSecretMem) return _authSecretMem;
+  var props = PropertiesService.getScriptProperties();
+  var s = props.getProperty("AUTH_SECRET");
+  if (!s) { s = Utilities.getUuid() + Utilities.getUuid(); props.setProperty("AUTH_SECRET", s); }
+  _authSecretMem = s;
+  return s;
+}
+function hmacB64_(msg) {
+  return Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature(msg, authSecret_()));
+}
+function safeEq_(a, b) {
+  a = String(a); b = String(b);
+  if (a.length !== b.length) return false;
+  var d = 0;
+  for (var i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return d === 0;
+}
+function signToken_(payload) {
+  var b64 = Utilities.base64EncodeWebSafe(JSON.stringify(payload), Utilities.Charset.UTF_8);
+  return b64 + "." + hmacB64_(b64);
+}
+function verifyToken_(tok) {
+  try {
+    if (!tok) return null;
+    var parts = String(tok).split(".");
+    if (parts.length !== 2) return null;
+    if (!safeEq_(hmacB64_(parts[0]), parts[1])) return null;
+    var payload = JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[0])).getDataAsString("UTF-8"));
+    if (!payload || !payload.exp || payload.exp < Date.now()) return null;
+    return payload;
+  } catch (e) { return null; }
+}
+function authEnforced_() {
+  return PropertiesService.getScriptProperties().getProperty("AUTH_ENFORCE") === "1";
+}
+
+// प्रत्येक doGet/doPost च्या सुरुवातीला. null = पुढे जा; object = त्रुटी परत करा.
+function applyAuth_(p) {
+  var act = (p.action || "").toString();
+  // बाहेरून आलेल्या (browser ने पाठवलेल्या) अंतर्गत चिन्हांना मान्यता नाही
+  delete p._authed;
+  if (AUTH_PUBLIC_ACTIONS[act]) return null;
+  var payload = verifyToken_(p.token);
+  if (payload) {
+    p._authed = true;
+    p.requesterRole = payload.r;
+    p.requesterUser = payload.u;
+    p.auditUser = payload.u;
+    p.auditRole = payload.r;
+    if (payload.r === "teacher" && TEACHER_CLASS_ACTIONS[act] && payload.c) {
+      var cp = String(payload.c).split("|");
+      p.iyatta = (cp[0] || "").trim();
+      p.tukdi = (cp[1] || "").trim();
+    }
+    return null;
+  }
+  if (authEnforced_()) {
+    return {status:"error", code:"auth", message:"Session संपले किंवा Login झाले नाही — कृपया पुन्हा Login करा."};
+  }
+  return null; // जुने (अजून Enforce न केलेले) व्यवहार जसे आहेत तसे चालतात
+}
+
+function doLogin(p, cb) {
+  try {
+    var username = (p.username || "").toString().trim();
+    var password = (p.password || "").toString();
+    if (!username || !password) return wrap(cb, {status:"error", code:"badcred", message:"Username व Password आवश्यक आहे."});
+    var cache = CacheService.getScriptCache();
+    var fk = "lf_" + username.toLowerCase();
+    var fails = parseInt(cache.get(fk) || "0", 10) || 0;
+    if (fails >= 8) return wrap(cb, {status:"error", code:"locked", message:"खूप चुकीचे प्रयत्न झाले — १५ मिनिटांनी पुन्हा प्रयत्न करा."});
+
+    var user = null;
+    var sh = getUsersSheet();
+    if (sh.getLastRow() > 1) {
+      var rows = sh.getRange(2, 1, sh.getLastRow() - 1, 5).getValues();
+      for (var i = 0; i < rows.length; i++) {
+        if ((rows[i][0] || "").toString().trim() === username && (rows[i][1] || "").toString() === password) {
+          user = {role: (rows[i][2] || "").toString().trim(), label: rows[i][3] || username, assignedClass: (rows[i][4] || "").toString()};
+          break;
+        }
+      }
+    }
+    if (!user) {
+      var props = PropertiesService.getScriptProperties();
+      var su = props.getProperty("SUPER_USER"), sp = props.getProperty("SUPER_PASS");
+      if (su && sp && username === su && safeEq_(password, sp)) user = {role: "super", label: "Super Master User", assignedClass: ""};
+    }
+    if (!user) {
+      cache.put(fk, String(fails + 1), 900);
+      logAudit(username, "", "loginFailed", "");
+      return wrap(cb, {status:"error", code:"badcred", message:"Username किंवा Password चुकीचा आहे."});
+    }
+    cache.remove(fk);
+    var exp = Date.now() + TOKEN_TTL_MS;
+    var token = signToken_({u: username, r: user.role, c: user.assignedClass, exp: exp});
+    logAudit(username, user.role, "login", "");
+    return wrap(cb, {status:"ok", token: token, exp: exp,
+      user: {username: username, role: user.role, label: user.label, assignedClass: user.assignedClass}});
+  } catch (err) {
+    return wrap(cb, {status:"error", message:err.toString()});
+  }
+}
+
+// ---- Apps Script Editor मधून Run करण्याचे functions ----
+function setSuperCredentials(username, password) {
+  if (!username || !password || String(password).length < 8) throw new Error("Username द्या व Password किमान ८ अक्षरी असावा.");
+  var props = PropertiesService.getScriptProperties();
+  props.setProperty("SUPER_USER", String(username));
+  props.setProperty("SUPER_PASS", String(password));
+  Logger.log("Super credentials सेट झाले. आता नवीन Deploy करून Login तपासा, मग enableAuthEnforcement() Run करा.");
+}
+function enableAuthEnforcement() {
+  var props = PropertiesService.getScriptProperties();
+  if (!props.getProperty("SUPER_USER") || !props.getProperty("SUPER_PASS")) {
+    throw new Error("आधी setSuperCredentials('user_s','पासवर्ड') Run करा, नाहीतर Super Master ला बाहेर पडावे लागेल.");
+  }
+  authSecret_();
+  props.setProperty("AUTH_ENFORCE", "1");
+  Logger.log("Token सक्ती चालू. आता Token शिवाय कोणतीही विनंती नाकारली जाईल.");
+}
+function disableAuthEnforcement() {
+  PropertiesService.getScriptProperties().setProperty("AUTH_ENFORCE", "0");
+}
+// सर्व चालू Login Session तात्काळ रद्द करण्यासाठी (गुप्त की बदलते)
+function revokeAllSessions() {
+  PropertiesService.getScriptProperties().setProperty("AUTH_SECRET", Utilities.getUuid() + Utilities.getUuid());
+  _authSecretMem = null;
+}
+
+function doGetSecurityStatus(p, cb) {
+  try {
+    if (p.requesterRole !== "super") return wrap(cb, {status:"error", message:"अधिकार फक्त Super Master ला आहे."});
+    var props = PropertiesService.getScriptProperties();
+    var seedPass = false;
+    var sh = getUsersSheet();
+    if (sh.getLastRow() > 1) {
+      var rows = sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues();
+      for (var i = 0; i < rows.length; i++) if ((rows[i][1] || "").toString() === "Pass@1234") seedPass = true;
+    }
+    return wrap(cb, {status:"ok", enforced: authEnforced_(), tokenActive: !!p._authed,
+      superConfigured: !!(props.getProperty("SUPER_USER") && props.getProperty("SUPER_PASS")), defaultPasswordsPresent: seedPass});
+  } catch (err) {
+    return wrap(cb, {status:"error", message:err.toString()});
+  }
+}
+
+// =====================================================================
+// ===== V19.36 — हजेरी विश्लेषण (उपस्थिती % + सलग गैरहजेरी) =====
+// =====================================================================
+function doGetAttendanceAnalytics(p, cb) {
+  try {
+    var role = p.requesterRole;
+    if (role !== "super" && role !== "master" && role !== "teacher") {
+      return wrap(cb, {status:"error", message:"हे विश्लेषण पाहण्याचा अधिकार नाही."});
+    }
+    var iyatta = (p.iyatta || "").toString().trim();
+    var tukdi = (p.tukdi || "").toString().trim();
+    var month = (p.month || "").toString().trim();
+    var minRun = Math.max(2, parseInt(p.minRun, 10) || 3);
+    if (!iyatta) return wrap(cb, {status:"error", message:"वर्ग निवडा."});
+    if (!/^\d{4}-\d{2}$/.test(month)) return wrap(cb, {status:"error", message:"महिना YYYY-MM स्वरूपात हवा."});
+    var from = month + "-01", to = month + "-31";
+
+    var roster = getRosterCached_(iyatta, tukdi, false).data;
+
+    // कार्यदिवस = त्या वर्ग-तुकडीसाठी ज्या तारखांना हजेरी Save झाली (शून्य अनुपस्थित असलेल्या Save सह)
+    var workByDiv = {};
+    function addWork(div, date) {
+      if (date < from || date > to) return;
+      (workByDiv[div] = workByDiv[div] || {})[date] = true;
+    }
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var logSh = ss.getSheetByName("Log");
+    if (logSh && logSh.getLastRow() > 1) {
+      var lastRow = logSh.getLastRow();
+      var cnt = Math.min(lastRow - 1, 20000);
+      var lRows = logSh.getRange(lastRow - cnt + 1, 4, cnt, 2).getValues(); // D=Action, E=Reference
+      for (var i = 0; i < lRows.length; i++) {
+        if ((lRows[i][0] || "").toString() !== "saveAttendance") continue;
+        var ref = (lRows[i][1] || "").toString();
+        var sp = ref.lastIndexOf(" ");
+        if (sp < 1) continue;
+        var div = ref.slice(0, sp), dt = ref.slice(sp + 1);
+        if (div.indexOf(iyatta + "-") !== 0) continue;
+        if (tukdi && div !== iyatta + "-" + tukdi) continue;
+        addWork(div, dt);
+      }
+    }
+    var attRows = readAttendanceRows_(from, to);
+    var absByReg = {};
+    for (var a = 0; a < attRows.length; a++) {
+      var r = attRows[a];
+      var d0 = fmt(r[1]);
+      if (d0 < from || d0 > to) continue;
+      if ((r[2] || "").toString().trim() !== iyatta) continue;
+      if (tukdi && (r[3] || "").toString().trim() !== tukdi) continue;
+      addWork(iyatta + "-" + (r[3] || "").toString().trim(), d0); // अनुपस्थित नोंद असलेला दिवसही कार्यदिवस
+      var rg = (r[4] || "").toString().trim().toLowerCase();
+      (absByReg[rg] = absByReg[rg] || {})[d0] = true;
+    }
+
+    var students = [], streaks = [], totalPct = 0, counted = 0;
+    for (var k = 0; k < roster.length; k++) {
+      var st = roster[k];
+      var div2 = st.iyatta + "-" + st.tukdi;
+      var days = Object.keys(workByDiv[div2] || {}).sort();
+      var absDates = absByReg[(st.regNo || "").toString().trim().toLowerCase()] || {};
+      var absent = 0, run = 0, maxRun = 0, runStart = "", bestFrom = "", bestTo = "";
+      for (var d = 0; d < days.length; d++) {
+        if (absDates[days[d]]) {
+          absent++;
+          if (run === 0) runStart = days[d];
+          run++;
+          if (run > maxRun) { maxRun = run; bestFrom = runStart; bestTo = days[d]; }
+        } else { run = 0; }
+      }
+      var present = Math.max(0, days.length - absent);
+      var pct = days.length ? Math.round(present * 1000 / days.length) / 10 : null;
+      if (pct !== null) { totalPct += pct; counted++; }
+      var mobile = (st.whatsappMobile || st.alternateMobile || st.contact || "").toString();
+      students.push({regNo: st.regNo, fullName: st.fullName, rollNo: st.rollNo, iyatta: st.iyatta, tukdi: st.tukdi,
+        workingDays: days.length, absent: absent, present: present, pct: pct, maxRun: maxRun, mobile: mobile});
+      if (maxRun >= minRun) streaks.push({regNo: st.regNo, fullName: st.fullName, iyatta: st.iyatta, tukdi: st.tukdi,
+        run: maxRun, from: bestFrom, to: bestTo, mobile: mobile});
+    }
+    students.sort(function(a, b) {
+      if (a.tukdi !== b.tukdi) return a.tukdi < b.tukdi ? -1 : 1;
+      return (parseInt(a.rollNo, 10) || 0) - (parseInt(b.rollNo, 10) || 0);
+    });
+    streaks.sort(function(a, b) { return b.run - a.run; });
+    var workingDays = 0;
+    Object.keys(workByDiv).forEach(function(kk) { workingDays = Math.max(workingDays, Object.keys(workByDiv[kk]).length); });
+    return wrap(cb, {status:"ok", month: month, iyatta: iyatta, tukdi: tukdi, minRun: minRun, workingDays: workingDays,
+      avgPct: counted ? Math.round(totalPct * 10 / counted) / 10 : null, students: students, streaks: streaks});
+  } catch (err) {
+    return wrap(cb, {status:"error", message:err.toString()});
+  }
+}
+
+// =====================================================================
+// ===== V19.36 — वर्षअखेर: 10th Pass-out Archive, Roll No. पुन्हा क्रमांक, Log Archive =====
+// =====================================================================
+var ARCHIVE_PREFIX = "PassedOut_";
+
+function pruneHiddenBackups_(prefix, keep) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var list = ss.getSheets().filter(function(sh) { return sh.getName().indexOf(prefix) === 0; });
+    list.sort(function(a, b) { return a.getName() < b.getName() ? 1 : (a.getName() > b.getName() ? -1 : 0); });
+    for (var i = keep; i < list.length; i++) ss.deleteSheet(list[i]);
+  } catch (e) {}
+}
+
+function listArchiveBatches_() {
+  var out = [];
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    ss.getSheets().forEach(function(sh) {
+      if (sh.getName().indexOf(ARCHIVE_PREFIX) !== 0 || sh.getLastRow() < 2) return;
+      var lc = sh.getLastColumn();
+      var rows = sh.getRange(2, 1, sh.getLastRow() - 1, lc).getValues();
+      var map = {};
+      rows.forEach(function(r) {
+        var b = (r[lc - 2] || "").toString();
+        if (!b) return;
+        if (!map[b]) map[b] = {batchId: b, sheet: sh.getName(), time: r[lc - 3], iyatta: (r[6] || "").toString(), count: 0};
+        map[b].count++;
+      });
+      Object.keys(map).forEach(function(k) { out.push(map[k]); });
+    });
+  } catch (e) {}
+  out.sort(function(a, b) { return a.batchId < b.batchId ? 1 : -1; });
+  return out.slice(0, 5);
+}
+
+function doArchivePassedOut(d) {
+  if (d.requesterRole !== "super") return {status:"error", message:"अधिकार फक्त Super Master ला आहे."};
+  if ((d.confirm || "") !== "ARCHIVE") return {status:"error", message:"खात्रीसाठी ARCHIVE टाइप करणे आवश्यक आहे."};
+  var cls = (d.iyatta || "").toString().trim();
+  var label = (d.label || "").toString().trim();
+  if (!cls) return {status:"error", message:"वर्ग निवडा."};
+  if (!/^[0-9A-Za-z_\- ]{3,20}$/.test(label)) return {status:"error", message:"Archive चे नाव (उदा. 2026-27) द्या."};
+  var lock = LockService.getScriptLock();
+  var locked = false;
+  try {
+    lock.waitLock(30000); locked = true;
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sh = ss.getSheetByName("Students");
+    if (!sh || sh.getLastRow() < 2) return {status:"error", message:"Students sheet रिकामी आहे."};
+    var sc = sh.getLastColumn(), n = sh.getLastRow() - 1;
+    var header = sh.getRange(1, 1, 1, sc).getValues()[0];
+    var all = sh.getRange(2, 1, n, sc).getValues();
+    var stamp = Utilities.formatDate(new Date(), "Asia/Kolkata", "yyyyMMdd_HHmm");
+
+    var moved = [], kept = [];
+    for (var i = 0; i < all.length; i++) {
+      var r = all[i];
+      if ((r[6] || "").toString().trim() === cls && (r[10] || r[2])) moved.push(r); else kept.push(r);
+    }
+    if (!moved.length) return {status:"error", message:"त्या वर्गात विद्यार्थी सापडले नाहीत."};
+
+    var bk = sh.copyTo(ss);
+    bk.setName("Students_BeforeArchive_" + stamp);
+    bk.hideSheet();
+    pruneHiddenBackups_("Students_BeforeArchive_", 5);
+
+    var arName = ARCHIVE_PREFIX + label.replace(/\s+/g, "_");
+    var ar = ss.getSheetByName(arName);
+    if (!ar) {
+      ar = ss.insertSheet(arName);
+      ar.getRange(1, 1, 1, sc + 3).setValues([header.concat(["ArchivedAt", "BatchId", "ArchivedBy"])]);
+      ar.setFrozenRows(1);
+    }
+    var batchId = "A" + stamp;
+    var ts = new Date().toLocaleString("en-IN");
+    var outRows = moved.map(function(r) { return r.concat([ts, batchId, d.requesterUser || ""]); });
+    ar.getRange(ar.getLastRow() + 1, 1, outRows.length, sc + 3).setValues(outRows);
+
+    sh.getRange(2, 1, n, sc).clearContent();
+    if (kept.length) sh.getRange(2, 1, kept.length, sc).setValues(kept);
+    invalidateRosterCache_();
+    return {rowIndex: 0, mode: "updated", count: moved.length, ref: "archive " + batchId,
+      extra: {batchId: batchId, archiveSheet: arName}};
+  } catch (err) {
+    return {status:"error", message:err.toString()};
+  } finally {
+    if (locked) lock.releaseLock();
+  }
+}
+
+function doRestorePassedOut(d) {
+  if (d.requesterRole !== "super") return {status:"error", message:"अधिकार फक्त Super Master ला आहे."};
+  var batchId = (d.batchId || "").toString().trim();
+  if (!batchId) return {status:"error", message:"Batch ID आवश्यक आहे."};
+  var lock = LockService.getScriptLock();
+  var locked = false;
+  try {
+    lock.waitLock(30000); locked = true;
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sh = ss.getSheetByName("Students");
+    var sc = sh.getLastColumn();
+    var existing = {};
+    if (sh.getLastRow() > 1) {
+      sh.getRange(2, 3, sh.getLastRow() - 1, 1).getValues().forEach(function(r) { existing[(r[0] || "").toString().trim().toLowerCase()] = true; });
+    }
+    var back = [], skipped = 0, found = 0;
+    ss.getSheets().forEach(function(ar) {
+      if (ar.getName().indexOf(ARCHIVE_PREFIX) !== 0 || ar.getLastRow() < 2) return;
+      var lc = ar.getLastColumn();
+      var rows = ar.getRange(2, 1, ar.getLastRow() - 1, lc).getValues();
+      var keep = [], changed = false;
+      rows.forEach(function(r) {
+        if ((r[lc - 2] || "").toString() !== batchId) { keep.push(r); return; }
+        found++;
+        var key = (r[2] || "").toString().trim().toLowerCase();
+        if (key && existing[key]) { skipped++; keep.push(r); return; }
+        back.push(r.slice(0, sc));
+        changed = true;
+      });
+      if (changed) {
+        ar.getRange(2, 1, rows.length, lc).clearContent();
+        if (keep.length) ar.getRange(2, 1, keep.length, lc).setValues(keep);
+      }
+    });
+    if (!found) return {status:"error", message:"हा Batch सापडला नाही."};
+    if (back.length) sh.getRange(sh.getLastRow() + 1, 1, back.length, sc).setValues(back);
+    invalidateRosterCache_();
+    return {rowIndex: 0, mode: "updated", count: back.length, ref: "restore " + batchId, extra: {restored: back.length, skipped: skipped}};
+  } catch (err) {
+    return {status:"error", message:err.toString()};
+  } finally {
+    if (locked) lock.releaseLock();
+  }
+}
+
+function nameCmp_(a, b) {
+  a = (a || "").toString(); b = (b || "").toString();
+  try { return a.localeCompare(b, "mr"); } catch (e) { return a < b ? -1 : (a > b ? 1 : 0); }
+}
+function isGirl_(g) { return /female|मुलगी|girl|स्त्री/i.test((g || "").toString()); }
+
+function doRenumberRolls(d) {
+  if (d.requesterRole !== "super") return {status:"error", message:"अधिकार फक्त Super Master ला आहे."};
+  if ((d.confirm || "") !== "RENUMBER") return {status:"error", message:"खात्रीसाठी RENUMBER टाइप करणे आवश्यक आहे."};
+  var order = (d.order || "name").toString();
+  if (["name", "boys_first", "girls_first"].indexOf(order) === -1) return {status:"error", message:"क्रम चुकीचा आहे."};
+  var classes = [];
+  try { classes = JSON.parse(d.classesJson || "[]"); } catch (e) { return {status:"error", message:"वर्ग यादी वाचता आली नाही."}; }
+  if (!classes.length) return {status:"error", message:"किमान एक वर्ग निवडा."};
+  var lock = LockService.getScriptLock();
+  var locked = false;
+  try {
+    lock.waitLock(30000); locked = true;
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sh = ss.getSheetByName("Students");
+    if (!sh || sh.getLastRow() < 2) return {status:"error", message:"Students sheet रिकामी आहे."};
+    var n = sh.getLastRow() - 1;
+    var base = sh.getRange(2, 1, n, 13).getValues(); // A..M
+    var stamp = Utilities.formatDate(new Date(), "Asia/Kolkata", "yyyyMMdd_HHmm");
+    var bk = sh.copyTo(ss);
+    bk.setName("Students_BeforeRoll_" + stamp);
+    bk.hideSheet();
+    pruneHiddenBackups_("Students_BeforeRoll_", 5);
+
+    var groups = {};
+    for (var i = 0; i < n; i++) {
+      var r = base[i];
+      if (!r[10] && !r[2]) continue;
+      var cls = (r[6] || "").toString().trim();
+      if (classes.indexOf(cls) === -1) continue;
+      var key = cls + "|" + (r[7] || "").toString().trim();
+      (groups[key] = groups[key] || []).push({i: i, name: r[10], girl: isGirl_(r[12]), reg: (r[2] || "").toString()});
+    }
+    var rollCol = base.map(function(r) { return [r[9]]; });
+    var changedCount = 0;
+    Object.keys(groups).forEach(function(k) {
+      var list = groups[k];
+      list.sort(function(a, b) {
+        if (order !== "name" && a.girl !== b.girl) return (order === "boys_first") ? (a.girl ? 1 : -1) : (a.girl ? -1 : 1);
+        var c = nameCmp_(a.name, b.name);
+        return c !== 0 ? c : (a.reg < b.reg ? -1 : (a.reg > b.reg ? 1 : 0));
+      });
+      list.forEach(function(it, idx) {
+        if (String(rollCol[it.i][0]) !== String(idx + 1)) changedCount++;
+        rollCol[it.i][0] = idx + 1;
+      });
+    });
+    sh.getRange(2, 10, n, 1).setValues(rollCol);
+    invalidateRosterCache_();
+    return {rowIndex: 0, mode: "updated", count: changedCount, ref: "renumber " + classes.join(","),
+      extra: {groups: Object.keys(groups).length, backupSheet: "Students_BeforeRoll_" + stamp}};
+  } catch (err) {
+    return {status:"error", message:err.toString()};
+  } finally {
+    if (locked) lock.releaseLock();
+  }
+}
+
+// ---- Log Archive ----
+function parseLogDate_(v) {
+  if (v instanceof Date) return v;
+  var s = (v || "").toString();
+  var m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(s); // en-IN: dd/mm/yyyy
+  if (m) return new Date(parseInt(m[3], 10), parseInt(m[2], 10) - 1, parseInt(m[1], 10));
+  m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (m) return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+  return null;
+}
+function archiveOldLog_(days) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName("Log");
+  if (!sh || sh.getLastRow() < 2) return 0;
+  var lock = LockService.getScriptLock();
+  var locked = false;
+  try {
+    lock.waitLock(20000); locked = true;
+    var n = sh.getLastRow() - 1;
+    var rows = sh.getRange(2, 1, n, 5).getValues();
+    var cutoff = new Date(Date.now() - days * 86400000);
+    var old = [], keep = [];
+    rows.forEach(function(r) {
+      var dt = parseLogDate_(r[0]);
+      if (dt && dt < cutoff) old.push(r); else keep.push(r);
+    });
+    if (!old.length) return 0;
+    var ar = ss.getSheetByName("Log_Archive");
+    if (!ar) { ar = ss.insertSheet("Log_Archive"); ar.appendRow(["Timestamp","User","Role","Action","Reference"]); }
+    // आधी Archive मध्ये लिहा, मग Log मधून काढा — मध्येच अपयश आल्यास नोंदी हरवत नाहीत
+    ar.getRange(ar.getLastRow() + 1, 1, old.length, 5).setValues(old.map(function(r) { r[0] = (r[0] instanceof Date) ? r[0].toLocaleString("en-IN") : r[0]; return r; }));
+    sh.getRange(2, 1, n, 5).clearContent();
+    if (keep.length) sh.getRange(2, 1, keep.length, 5).setValues(keep);
+    return old.length;
+  } finally {
+    if (locked) lock.releaseLock();
+  }
+}
+function doArchiveLogNow(d) {
+  if (d.requesterRole !== "super") return {status:"error", message:"अधिकार फक्त Super Master ला आहे."};
+  var days = Math.max(30, parseInt(d.days, 10) || 90);
+  try {
+    var moved = archiveOldLog_(days);
+    return {rowIndex: 0, mode: "updated", count: moved, ref: "archiveLog " + days + "d"};
+  } catch (err) {
+    return {status:"error", message:err.toString()};
   }
 }
