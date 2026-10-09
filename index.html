@@ -50,6 +50,15 @@
 <!-- TOP NAV -->
 <div class="topnav">
   <div class="brand">🏫 SGS हायस्कूल पाचोरा v3</div>
+  <!-- V19.37: वर्ग शिक्षकासाठी — प्रत्येक Tab स्वतंत्र पानासारखा वरच्या Menu मध्ये -->
+  <button class="navbtn tch-nav" data-page="teacher" data-tchtab="dash" onclick="tchNav('dash',this)">📊 डॅशबोर्ड</button>
+  <button class="navbtn tch-nav" data-page="teacher" data-tchtab="roster" onclick="tchNav('roster',this)">👥 विद्यार्थी माहिती</button>
+  <button class="navbtn tch-nav" data-page="teacher" data-tchtab="att" onclick="tchNav('att',this)">✅ हजेरी</button>
+  <button class="navbtn tch-nav" data-page="teacher" data-tchtab="diary" onclick="tchNav('diary',this)">📔 विद्यार्थी डायरी</button>
+  <button class="navbtn tch-nav" data-page="teacher" data-tchtab="fees" onclick="tchNav('fees',this)">💰 फी</button>
+  <button class="navbtn tch-nav" data-page="teacher" data-tchtab="notices" onclick="tchNav('notices',this)">🔔 सूचना</button>
+  <button class="navbtn tch-nav" data-page="teacher" data-tchtab="ana" onclick="tchNav('ana',this)">📈 विश्लेषण</button>
+  <button class="navbtn tch-nav" data-page="teacher" data-tchtab="maint" onclick="tchNav('maint',this)">🔧 मेंटेनन्स</button>
   <button class="navbtn active" data-page="dashboard" data-master-only="true" onclick="showPage('dashboard',this)">🏠 मुख्यपृष्ठ</button>
   <button class="navbtn" data-page="student" data-master-only="true" onclick="showPage('student',this)">👤 विद्यार्थी माहिती</button>
   <button class="navbtn" data-page="lc" data-master-only="true" onclick="showPage('lc',this)">📋 LC Issue</button>
@@ -1466,7 +1475,7 @@
   <div class="sec-title" style="margin-bottom:4px">🏫 वर्ग शिक्षक — <span id="tch_classLabel">—</span></div>
   <div style="font-size:12px;opacity:.75;margin-bottom:14px">फक्त आपल्या वर्गाची माहिती येथे दिसेल.</div>
 
-  <div style="margin-bottom:14px">
+  <div class="tch-tabbar" style="margin-bottom:14px">
     <button class="tch-tabbtn active" data-tch="dash" onclick="tchShowTab('dash')">📊 डॅशबोर्ड</button>
     <button class="tch-tabbtn" data-tch="roster" onclick="tchShowTab('roster')">👥 विद्यार्थी माहिती</button>
     <button class="tch-tabbtn" data-tch="att" onclick="tchShowTab('att')">✅ Attendance</button>

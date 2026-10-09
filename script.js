@@ -32,7 +32,7 @@ window.androidBackPressed = function() {
 
 
 // URL persistence
-var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbzL-gJ3FdtYimYBjUJHJiV8MLdO4pcaHKtkLdBi8WwVJpzTqA4O-xihD2cqdVuDT4MJ/exec';
+var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbw6S4cuW1J_EjygDlnKDXVTF4PLwz3vUir3Xt_RHrVmNMM-e3gtaKmVK_NNk9P6Ds4l/exec';
 
 // =====================================================
 // 🔐 LOGIN + ROLE PERMISSIONS
@@ -838,9 +838,15 @@ function isNetworkFailure(r) {
   if (r.status === 'error' && r.message && /fetch error|failed to fetch|network|load failed|timeout|empty response/i.test(r.message)) return true;
   return false;
 }
+function friendlyMsg(m) {
+  if (/unknown action/i.test(m || '')) {
+    return 'Apps Script मध्ये Code.gs ची नवीन आवृत्ती अजून Deploy झालेली नाही (' + m + '). Code.gs paste करा → Deploy → Manage deployments → ✏️ Edit → Version: "New version" → Deploy.';
+  }
+  return m;
+}
 function errTxt(r) {
   if (r && r.status === 'queued') return r.message;
-  return '❌ ' + (r && r.message ? r.message : 'Failed');
+  return '❌ ' + friendlyMsg(r && r.message ? r.message : 'Failed');
 }
 
 function smartSave(data, onResult) {
@@ -3564,6 +3570,8 @@ showPage = function(name, btn) {
   }
   if (name === 'teacher') {
     tchInit();
+    var ap = document.querySelector('#pg-teacher .tch-panel.active');
+    if (ap) tchSyncNav(ap.id.replace('tchp-', ''));
   }
 };
 
@@ -4103,6 +4111,30 @@ function mstRenderStatsReport(r) {
   }
 }
 
+// वरच्या Menu मधून Tab उघडणे (वर्ग शिक्षक) — दुसऱ्या पानावरून आल्यास आधी शिक्षक-पान उघडते
+function tchNav(tab, btn) {
+  var pg = document.getElementById('pg-teacher');
+  var onTeacher = pg && pg.classList.contains('active');
+  if (!onTeacher) {
+    showPage('teacher');   // tchInit(): वर्ग-यादी + Dashboard Load करते
+    if (tab === 'dash') tchShowTabPanelOnly('dash'); else tchShowTab(tab);
+  } else {
+    tchShowTab(tab);
+  }
+  tchSyncNav(tab);
+}
+function tchShowTabPanelOnly(tab) {
+  document.querySelectorAll('.tch-tabbtn').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-tch') === tab); });
+  document.querySelectorAll('.tch-panel').forEach(function(p){ p.classList.toggle('active', p.id === 'tchp-' + tab); });
+}
+function tchSyncNav(tab) {
+  var pg = document.getElementById('pg-teacher');
+  if (!pg || !pg.classList.contains('active')) return;
+  document.querySelectorAll('.navbtn').forEach(function(b){ b.classList.remove('active'); });
+  var b = document.querySelector('.tch-nav[data-tchtab="' + tab + '"]');
+  if (b) b.classList.add('active');
+}
+
 function tchShowTab(tab) {
   document.querySelectorAll('.tch-tabbtn').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-tch') === tab); });
   document.querySelectorAll('.tch-panel').forEach(function(p){ p.classList.remove('active'); });
@@ -4116,6 +4148,7 @@ function tchShowTab(tab) {
   else if (tab === 'notices') tchLoadNoticesFull();
   else if (tab === 'maint') tchMntReset();
   else if (tab === 'ana') tchAnaInit();
+  tchSyncNav(tab);
 }
 
 function tchInit() {
@@ -5642,7 +5675,7 @@ function elLoad() {
   var recRes = null, rosRes = null;
   function done() {
     got++; if (got < need) return;
-    if (errMsg) { st.textContent = '❌ ' + errMsg; return; }
+    if (errMsg) { st.textContent = '❌ ' + friendlyMsg(errMsg); return; }
     elState.records = recRes.records || [];
     elState.saved = {}; elState.records.forEach(function(r) { elState.saved[r.regNo] = r; });
     elState.absent = {}; (recRes.absentRegNos || []).forEach(function(x) { elState.absent[x] = true; });
@@ -5744,7 +5777,7 @@ function elPeonLoad(silent) {
   var box = document.getElementById('el_peonList');
   if (!silent) box.textContent = '⏳ Load होत आहे...';
   jsonpRequest({action: 'getEarlyLeavePeon', requesterRole: currentUser.role}, function(r) {
-    if (!r || r.status !== 'ok') { if (!silent) box.textContent = '❌ ' + ((r && r.message) || 'Load Failed'); return; }
+    if (!r || r.status !== 'ok') { if (!silent) box.textContent = '❌ ' + friendlyMsg((r && r.message) || 'Load Failed'); return; }
     elState.peon = r.records || [];
     elPeonRender(r.date);
   });
