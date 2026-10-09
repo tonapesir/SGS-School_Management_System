@@ -36,8 +36,8 @@ body.role-master #userMgmtAdminCards{display:none!important}
 /* सर्व Users ला आता Google Sheets URL + Load Students सुविधा उपलब्ध (V19.15) */
 
 /* ===== CLASS TEACHER ROLE (V19.32) — फक्त स्वतःच्या वर्गाचे Teacher पान दिसते ===== */
-body.role-teacher .navbtn:not([data-page="teacher"]),
-body.role-teacher .dcard:not([data-page="teacher"]){display:none!important}
+body.role-teacher .navbtn:not([data-page="teacher"]):not([data-page="earlyleave"]),
+body.role-teacher .dcard:not([data-page="teacher"]):not([data-page="earlyleave"]){display:none!important}
 body.role-teacher .master-only,
 body.role-teacher .edit-only{display:none!important}
 body.role-teacher .tch-back-btn{display:inline-block!important}
@@ -392,3 +392,11 @@ body.auth-locked #pwaInstallBtn{display:none!important}
   .cert-sheet2{margin:0!important}
   .cert-sheet2 .cert-page.a4-noborder{padding:7mm 15mm 2mm 20mm!important;page:auto!important}
 }
+
+/* ===== V19.37 — घरी जाणारे विद्यार्थी + Peon भूमिका ===== */
+body.role-peon .navbtn:not([data-page="search"]):not([data-page="profile"]):not([data-page="earlyleave"]),
+body.role-peon .dcard{display:none!important}
+body.role-peon .master-only,body.role-peon .edit-only,body.role-peon .super-only,body.role-peon .cert-save{display:none!important}
+body.role-cert .navbtn[data-page="earlyleave"],body.role-cert .dcard[data-page="earlyleave"]{display:none!important}
+body.role-peon .el-staff-box{display:none!important}
+body:not(.role-peon) .el-peon-box{display:none!important}

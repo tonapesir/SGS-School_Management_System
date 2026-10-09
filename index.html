@@ -65,6 +65,7 @@
   <button class="navbtn master-only" data-page="report" onclick="showPage('report',this);rpInit();">📑 रिपोर्ट</button>
   <button class="navbtn super-only" data-page="superadmin" onclick="showPage('superadmin',this)">🛡️ Super Admin</button>
   <button class="navbtn master-only" data-page="attanalytics" onclick="showPage('attanalytics',this)">📈 हजेरी विश्लेषण</button>
+  <button class="navbtn" data-page="earlyleave" onclick="showPage('earlyleave',this)">🚪 घरी जाणारे</button>
   <button class="navbtn" data-page="teacher" onclick="showPage('teacher',this)">🏫 वर्ग शिक्षक</button>
   <span class="user-chip" id="authUserChip">User</span>
   <button class="logout-btn" onclick="logoutUser()">Logout</button>
@@ -316,6 +317,11 @@
       <div class="icon">📑</div>
       <h3>रिपोर्ट</h3>
       <p>जात/प्रवर्ग/वर्ग/फी/मोबाईल/पत्ता/लिंग निहाय यादी — A4 PDF Export</p>
+    </div>
+    <div class="dcard master-only" data-page="earlyleave" onclick="showPage('earlyleave',this)">
+      <div class="icon">🚪</div>
+      <h3>घरी जाणारे विद्यार्थी</h3>
+      <p>परवानगीने / विनापरवानगी घरी गेलेल्यांची नोंद, यादी व पालकांना कॉल/WhatsApp</p>
     </div>
     <div class="dcard master-only" data-page="attanalytics" onclick="showPage('attanalytics',this)">
       <div class="icon">📈</div>
@@ -767,7 +773,7 @@
       <div class="div"></div>
       <div class="sec-title">उपस्थिती माहिती / ATTENDANCE DETAILS</div>
       <div class="frow">
-        <div class="fg w180"><label>शै.वर्ष (Academic Year)</label><select id="at_stxt2" value="2025-26">-</option><option>2026-27</option><option>2027-28</option><option>2029-30</option></select></div>
+        <div class="fg w180"><label>शै.वर्ष (Academic Year)</label><select id="at_stxt2" value="2026-27">-</option><option>2027-28</option><option>2028-29</option><option>2029-30</option></select></div>
         <div class="fg w150"><label>प्रमाणपत्र दिनांक</label><input type="date" id="at_stxt57"></div>
         <div class="fg wf">
           <label>उद्देश (Purpose)</label>
@@ -952,6 +958,7 @@
             <option value="deo">DEO</option>
             <option value="cert" selected>Certificate User</option>
             <option value="teacher">Class Teacher</option>
+            <option value="peon">Peon (शिपाई)</option>
           </select>
         </div>
         <div class="fg w150"><label>Label / Display Name</label><input id="um_label" placeholder="उदा. Clerk 2"></div>
@@ -1196,6 +1203,57 @@
 </div>
 
 <!-- ==================== रिपोर्ट PAGE (Super Master / Master — सर्व वर्ग; Class Teacher — फक्त स्वतःचा वर्ग) ==================== -->
+<!-- ==================== घरी जाणारे विद्यार्थी — V19.37 ==================== -->
+<div id="pg-earlyleave" class="page">
+  <div class="sec-title" style="margin-bottom:10px">🚪 घरी जाणारे विद्यार्थी</div>
+
+  <!-- ===== Peon: आजची परवानगी यादी ===== -->
+  <div class="el-peon-box">
+    <div class="card">
+      <div class="card-header"><div><h2>आज घरी जाण्याची परवानगी मिळालेले विद्यार्थी</h2><p>विद्यार्थी शाळेबाहेर गेला की "✅ गेला", नाही गेला तर "❌ गेला नाही" दाबा.</p></div>
+        <button class="btn btn-blue btn-sm" onclick="elPeonLoad()">🔄 Refresh</button></div>
+      <div class="card-body">
+        <div id="el_peonSummary" style="font-size:13.5px;margin-bottom:10px"></div>
+        <div id="el_peonMsg" style="font-size:12.5px;margin-bottom:8px;color:#cfd8e8"></div>
+        <div id="el_peonList">⏳ Load होत आहे...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== वर्ग-शिक्षक / Master / Super ===== -->
+  <div class="el-staff-box">
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-header"><div><h2>✍️ नोंद करा</h2><p>फक्त हजर विद्यार्थ्यांचीच नोंद होते. तारीख बदलून मागील दिवसाची नोंदही करता येते.</p></div></div>
+      <div class="card-body">
+        <div class="frow" style="gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
+          <div class="fg w180" id="el_classWrap"><label>वर्ग / तुकडी</label><select id="el_class" onchange="elLoad()" style="padding:7px 10px;border-radius:var(--r);border:1.5px solid var(--pb);background:var(--peach);font-family:inherit;width:100%"><option value="ALL|">⏳ Load होत आहे...</option></select></div>
+          <div class="fg w150"><label>दिनांक</label><input id="el_date" type="date" onchange="elLoad()"></div>
+          <div class="fg" style="flex:0 0 auto"><button class="btn btn-blue" onclick="elLoad()">🔄 Load</button></div>
+          <div class="fg" style="flex:0 0 auto"><button class="btn btn-gold" onclick="elToday()">📅 आज</button></div>
+        </div>
+        <div id="el_teacherClass" style="display:none;font-weight:700;margin-bottom:8px"></div>
+        <div id="el_info" style="font-size:12.5px;margin-bottom:8px;color:#cfd8e8"></div>
+        <div id="el_entryWrap"></div>
+        <div style="margin-top:10px"><button id="el_saveBtn" class="btn btn-green" onclick="elSave()">💾 नोंदी Save करा</button></div>
+        <div id="el_saveStatus" style="font-size:12.5px;margin-top:8px;color:#cfd8e8"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div><h2>📋 नोंदींची यादी</h2><p>निवडलेल्या दिनांकाची — वर्गनिहाय; पालकांना कॉल / WhatsApp संदेश</p></div></div>
+      <div class="card-body">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <button id="el_f_all" class="btn btn-blue btn-sm" onclick="elSetFilter('all')">सर्व</button>
+          <button id="el_f_permitted" class="btn btn-green btn-sm" onclick="elSetFilter('permitted')">✅ परवानगी</button>
+          <button id="el_f_unpermitted" class="btn btn-orange btn-sm" onclick="elSetFilter('unpermitted')">⚠️ विनापरवानगी</button>
+        </div>
+        <div id="el_listSummary" style="font-size:13px;margin-bottom:6px"></div>
+        <div id="el_list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ==================== हजेरी विश्लेषण (Master / Super) — V19.36 ==================== -->
 <div id="pg-attanalytics" class="page">
   <div class="sec-title" style="margin-bottom:10px">📈 हजेरी विश्लेषण</div>

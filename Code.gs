@@ -223,13 +223,20 @@ function doGet(e) {
   if (p.action === "getAttendanceAnalytics") {
     return doGetAttendanceAnalytics(p, cb);
   }
+  if (p.action === "getEarlyLeave") {
+    return doGetEarlyLeave(p, cb);
+  }
+  if (p.action === "getEarlyLeavePeon") {
+    return doGetEarlyLeavePeon(p, cb);
+  }
   if (p.action === "getSecurityStatus") {
     return doGetSecurityStatus(p, cb);
   }
   if (p.action === "promoteStudents" || p.action === "undoPromotion" ||
       p.action === "runBackup" || p.action === "setBackupSchedule" ||
       p.action === "archivePassedOut" || p.action === "restorePassedOut" ||
-      p.action === "renumberRolls" || p.action === "archiveLogNow") {
+      p.action === "renumberRolls" || p.action === "archiveLogNow" ||
+      p.action === "saveEarlyLeave" || p.action === "markEarlyLeaveOut") {
     return handleAction(p, cb);
   }
   var a = p.action || "";
@@ -345,6 +352,10 @@ function handleAction(d, cb) {
       result = doUpdateClassDivision(d);
     } else if (action === "saveTotalFee") {
       result = doSaveTotalFee(d);
+    } else if (action === "saveEarlyLeave") {
+      result = doSaveEarlyLeave(d);
+    } else if (action === "markEarlyLeaveOut") {
+      result = doMarkEarlyLeaveOut(d);
     } else if (action === "archivePassedOut") {
       result = doArchivePassedOut(d);
     } else if (action === "restorePassedOut") {
@@ -564,8 +575,12 @@ function doSaveUser(p, cb) {
     var sh = getUsersSheet();
     var username = (p.username||"").toString().trim();
     if (!username) return wrap(cb, {status:"error", message:"Username आवश्यक आहे."});
+    var roleIn = (p.role || "cert").toString().trim();
+    if (["super","master","deo","cert","teacher","peon"].indexOf(roleIn) === -1) {
+      return wrap(cb, {status:"error", message:"Role चुकीचा आहे."});
+    }
     var rowToWrite = findRowByKey(sh, 1, username);
-    var row = [username, p.password||"", p.role||"cert", p.label||username, p.assignedClass||""];
+    var row = [username, p.password||"", roleIn, p.label||username, p.assignedClass||""];
     if (rowToWrite) {
       sh.getRange(rowToWrite, 1, 1, 5).setValues([row]);
     } else {
@@ -2216,7 +2231,9 @@ function doGetAttendancePending(p, cb) {
 // स्थलांतर: (१) setSuperCredentials('user_s','पासवर्ड') (२) नवीन Deploy (३) Login चाचणी (४) enableAuthEnforcement()
 var TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
 var AUTH_PUBLIC_ACTIONS = {ping:1, login:1, verify:1};
-var TEACHER_CLASS_ACTIONS = {getClassStudents:1, getTeacherDashboard:1, saveAttendance:1, getAttendance:1, getAttendanceAnalytics:1};
+var TEACHER_CLASS_ACTIONS = {getClassStudents:1, getTeacherDashboard:1, saveAttendance:1, getAttendance:1, getAttendanceAnalytics:1, getEarlyLeave:1, saveEarlyLeave:1};
+// Peon (शिपाई) फक्त हेच करू शकतो: विद्यार्थी शोध/प्रोफाइल (getAll), घरी जाणाऱ्यांची यादी, मार्क-आउट, स्वतःचा Password बदल
+var PEON_ACTIONS = {getAll:1, getEarlyLeavePeon:1, markEarlyLeaveOut:1, changePassword:1};
 var _authSecretMem = null;
 
 function authSecret_() {
@@ -2269,6 +2286,9 @@ function applyAuth_(p) {
     p.requesterUser = payload.u;
     p.auditUser = payload.u;
     p.auditRole = payload.r;
+    if (payload.r === "peon" && !PEON_ACTIONS[act]) {
+      return {status:"error", code:"forbidden", message:"या User ला हे करण्याचा अधिकार नाही."};
+    }
     if (payload.r === "teacher" && TEACHER_CLASS_ACTIONS[act] && payload.c) {
       var cp = String(payload.c).split("|");
       p.iyatta = (cp[0] || "").trim();
@@ -2705,5 +2725,205 @@ function doArchiveLogNow(d) {
     return {rowIndex: 0, mode: "updated", count: moved, ref: "archiveLog " + days + "d"};
   } catch (err) {
     return {status:"error", message:err.toString()};
+  }
+}
+
+
+// =====================================================================
+// ===== V19.37 — घरी जाणारे विद्यार्थी (Early Leave) =====
+// =====================================================================
+// नोंद: Master/Super = कोणताही वर्ग-तुकडी; वर्ग-शिक्षक = फक्त स्वतःचा वर्ग; Peon = फक्त आजची "परवानगी" यादी पाहून मार्क-आउट.
+// एका विद्यार्थ्याची एका दिवसाची एकच नोंद (date + regNo). हजर विद्यार्थ्यांचीच नोंद; गैरहजर (हजेरी नोंदवहीनुसार) नाकारली जाते.
+var EL_SHEET = "EarlyLeave";
+var EL_HEADERS = ["Timestamp","Date","Class","Division","RegNo","StudentId","FullName","Type","Period","RecordedBy","RecordedRole","Status","MarkedBy","MarkedAt"];
+var EL_TYPES = {permitted:1, unpermitted:1};
+
+function getELSheet_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(EL_SHEET);
+  if (sh) return sh;
+  sh = ss.insertSheet(EL_SHEET);
+  sh.appendRow(EL_HEADERS);
+  sh.getRange("B:B").setNumberFormat("@");
+  sh.setFrozenRows(1);
+  return sh;
+}
+function elDateValid_(d) { return ISO_DATE_RE.test(d || ""); }
+
+function elStudentMap_() {
+  var map = {};
+  getRosterCached_("", "", false).data.forEach(function(st) { map[(st.regNo || "").toString().trim().toLowerCase()] = st; });
+  return map;
+}
+function elRowToObj_(r, stMap) {
+  var st = stMap[(r[4] || "").toString().trim().toLowerCase()] || {};
+  return {date: fmt(r[1]), iyatta: (r[2] || "").toString(), tukdi: (r[3] || "").toString(), regNo: (r[4] || "").toString(), studentId: r[5],
+    fullName: r[6], type: (r[7] || "").toString(), period: parseInt(r[8], 10) || 0, recordedBy: r[9], recordedRole: r[10],
+    status: (r[11] || "").toString(), markedBy: r[12] || "", markedAt: r[13] || "",
+    gender: st.gender || "", rollNo: st.rollNo || "", contact: (st.contact || "").toString(), whatsapp: (st.whatsappMobile || "").toString(),
+    alt: (st.alternateMobile || "").toString(), photoUrl: st.photoUrl || ""};
+}
+function elReadAll_(sh) {
+  var n = sh.getLastRow() - 1;
+  return n > 0 ? sh.getRange(2, 1, n, 14).getValues() : [];
+}
+function elSort_(list) {
+  list.sort(function(a, b) {
+    var c = classSortKey_(a.iyatta) - classSortKey_(b.iyatta);
+    if (c) return c;
+    if (a.tukdi !== b.tukdi) return a.tukdi < b.tukdi ? -1 : 1;
+    if (a.period !== b.period) return a.period - b.period;
+    return (parseInt(a.rollNo, 10) || 0) - (parseInt(b.rollNo, 10) || 0);
+  });
+  return list;
+}
+function elAbsentSet_(date, iyatta, tukdi) {
+  var set = {};
+  readAttendanceRows_(date, date).forEach(function(r) {
+    if (fmt(r[1]) !== date) return;
+    if ((r[2] || "").toString().trim() !== iyatta) return;
+    if (tukdi && (r[3] || "").toString().trim() !== tukdi) return;
+    set[(r[4] || "").toString().trim().toLowerCase()] = true;
+  });
+  return set;
+}
+
+function doGetEarlyLeave(p, cb) {
+  try {
+    var role = p.requesterRole;
+    if (role !== "super" && role !== "master" && role !== "teacher") return wrap(cb, {status:"error", message:"हे पान पाहण्याचा अधिकार नाही."});
+    var date = (p.date || todayStr()).toString().trim();
+    if (!elDateValid_(date)) return wrap(cb, {status:"error", message:"तारीख YYYY-MM-DD स्वरूपात हवी."});
+    var iyatta = (p.iyatta || "").toString().trim();
+    var tukdi = (p.tukdi || "").toString().trim();
+    if (role === "teacher" && !iyatta) return wrap(cb, {status:"error", message:"वर्ग-शिक्षकाला वर्ग नेमलेला नाही."});
+    var sh = getELSheet_();
+    var stMap = elStudentMap_();
+    var out = [];
+    elReadAll_(sh).forEach(function(r) {
+      if (fmt(r[1]) !== date) return;
+      if (iyatta && (r[2] || "").toString().trim() !== iyatta) return;
+      if (tukdi && (r[3] || "").toString().trim() !== tukdi) return;
+      out.push(elRowToObj_(r, stMap));
+    });
+    var absent = [];
+    if (iyatta) absent = Object.keys(elAbsentSet_(date, iyatta, tukdi));
+    return wrap(cb, {status:"ok", date: date, records: elSort_(out), absentRegNos: absent});
+  } catch (err) {
+    return wrap(cb, {status:"error", message:err.toString()});
+  }
+}
+
+function doSaveEarlyLeave(d) {
+  var role = d.requesterRole;
+  if (role !== "super" && role !== "master" && role !== "teacher") return {status:"error", message:"नोंद करण्याचा अधिकार नाही."};
+  var date = (d.date || todayStr()).toString().trim();
+  if (!elDateValid_(date)) return {status:"error", message:"तारीख YYYY-MM-DD स्वरूपात हवी."};
+  if (date > todayStr()) return {status:"error", message:"भविष्यातील तारखेची नोंद करता येत नाही."};
+  var iyatta = (d.iyatta || "").toString().trim();
+  var tukdi = (d.tukdi || "").toString().trim();
+  if (!iyatta || !tukdi) return {status:"error", message:"वर्ग व तुकडी निवडा."};
+  var entries = safeParseJson(d.entriesJson), removes = safeParseJson(d.removeJson);
+  if (!entries.length && !removes.length) return {status:"error", message:"जतन करण्यासाठी काहीही बदल नाही."};
+
+  var lock = LockService.getScriptLock();
+  var locked = false;
+  try {
+    lock.waitLock(25000); locked = true;
+    var roster = {};
+    getRosterCached_(iyatta, tukdi, true).data.forEach(function(st) { roster[(st.regNo || "").toString().trim().toLowerCase()] = st; });
+    var absent = elAbsentSet_(date, iyatta, tukdi);
+    var sh = getELSheet_();
+    var all = elReadAll_(sh);
+    var idxOf = {};
+    for (var i = 0; i < all.length; i++) idxOf[fmt(all[i][1]) + "|" + (all[i][4] || "").toString().trim().toLowerCase()] = i;
+
+    var ts = new Date().toLocaleString("en-IN");
+    var updates = [], appends = [], dels = [], rejected = [];
+    entries.forEach(function(e) {
+      var key = (e.regNo || "").toString().trim().toLowerCase();
+      var st = roster[key];
+      if (!st) { rejected.push({regNo: e.regNo, reason: "विद्यार्थी या वर्ग-तुकडीत नाही"}); return; }
+      if (absent[key]) { rejected.push({regNo: e.regNo, reason: "गैरहजर विद्यार्थ्याची नोंद करता येत नाही"}); return; }
+      var type = (e.type || "").toString();
+      var period = parseInt(e.period, 10);
+      if (!EL_TYPES[type]) { rejected.push({regNo: e.regNo, reason: "प्रकार चुकीचा"}); return; }
+      if (!(period >= 1 && period <= 9)) { rejected.push({regNo: e.regNo, reason: "तासिका क्रमांक १ ते ९ हवा"}); return; }
+      var ix = idxOf[date + "|" + key];
+      if (ix !== undefined) {
+        var row = all[ix];
+        var typeChanged = (row[7] || "").toString() !== type;
+        row[0] = ts; row[7] = type; row[8] = period; row[9] = d.requesterUser || ""; row[10] = role;
+        if (typeChanged) { row[11] = ""; row[12] = ""; row[13] = ""; }
+        updates.push(ix);
+      } else {
+        appends.push([ts, date, iyatta, tukdi, st.regNo, st.studentId || "", st.fullName || "", type, period, d.requesterUser || "", role, "", "", ""]);
+      }
+    });
+    removes.forEach(function(rg) {
+      var ix = idxOf[date + "|" + (rg || "").toString().trim().toLowerCase()];
+      if (ix !== undefined && (all[ix][2] || "").toString().trim() === iyatta && (all[ix][3] || "").toString().trim() === tukdi) dels.push(ix);
+    });
+
+    updates.forEach(function(ix) { sh.getRange(ix + 2, 1, 1, 14).setValues([all[ix]]); });
+    if (appends.length) sh.getRange(sh.getLastRow() + 1, 1, appends.length, 14).setValues(appends);
+    dels.sort(function(a, b) { return b - a; }).forEach(function(ix) { sh.deleteRow(ix + 2); });
+
+    var saved = updates.length + appends.length;
+    if (!saved && !dels.length && rejected.length) return {status:"error", message: rejected[0].reason + (rejected.length > 1 ? " (+" + (rejected.length - 1) + " इतर)" : "")};
+    return {rowIndex: 0, mode: "updated", count: saved, ref: iyatta + "-" + tukdi + " " + date, extra: {saved: saved, removed: dels.length, rejected: rejected}};
+  } catch (err) {
+    return {status:"error", message:err.toString()};
+  } finally {
+    if (locked) lock.releaseLock();
+  }
+}
+
+// Peon: आजच्या "परवानगी" दिलेल्या विद्यार्थ्यांची यादी
+function doGetEarlyLeavePeon(p, cb) {
+  try {
+    var role = p.requesterRole;
+    if (role !== "peon" && role !== "super" && role !== "master") return wrap(cb, {status:"error", message:"अधिकार नाही."});
+    var date = todayStr();
+    var stMap = elStudentMap_();
+    var out = [];
+    elReadAll_(getELSheet_()).forEach(function(r) {
+      if (fmt(r[1]) !== date || (r[7] || "").toString() !== "permitted") return;
+      out.push(elRowToObj_(r, stMap));
+    });
+    return wrap(cb, {status:"ok", date: date, records: elSort_(out)});
+  } catch (err) {
+    return wrap(cb, {status:"error", message:err.toString()});
+  }
+}
+
+// Peon: विद्यार्थी गेला / गेला नाही / पूर्ववत
+function doMarkEarlyLeaveOut(d) {
+  var role = d.requesterRole;
+  if (role !== "peon" && role !== "super" && role !== "master") return {status:"error", message:"अधिकार नाही."};
+  var status = (d.status || "").toString();
+  if (["gone", "notgone", ""].indexOf(status) === -1) return {status:"error", message:"स्थिती चुकीची आहे."};
+  var date = (role === "peon") ? todayStr() : (d.date || todayStr()).toString().trim();
+  var key = (d.regNo || "").toString().trim().toLowerCase();
+  if (!key) return {status:"error", message:"RegNo आवश्यक आहे."};
+  var lock = LockService.getScriptLock();
+  var locked = false;
+  try {
+    lock.waitLock(20000); locked = true;
+    var sh = getELSheet_();
+    var all = elReadAll_(sh);
+    for (var i = 0; i < all.length; i++) {
+      var r = all[i];
+      if (fmt(r[1]) !== date || (r[4] || "").toString().trim().toLowerCase() !== key) continue;
+      if ((r[7] || "").toString() !== "permitted") return {status:"error", message:"फक्त परवानगी दिलेल्या विद्यार्थ्याचीच मार्क-आउट नोंद करता येते."};
+      var when = status ? new Date().toLocaleString("en-IN") : "";
+      sh.getRange(i + 2, 12, 1, 3).setValues([[status, status ? (d.requesterUser || "") : "", when]]);
+      return {rowIndex: i + 2, mode: "updated", count: 1, ref: (r[6] || "") + " " + (status || "reset") + " " + date, extra: {status: status}};
+    }
+    return {status:"error", message:"आजची नोंद सापडली नाही (शिक्षकाने ती बदलली/काढली असू शकते) — यादी Refresh करा."};
+  } catch (err) {
+    return {status:"error", message:err.toString()};
+  } finally {
+    if (locked) lock.releaseLock();
   }
 }
