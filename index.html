@@ -75,6 +75,7 @@
   <button class="navbtn super-only" data-page="superadmin" onclick="showPage('superadmin',this)">🛡️ Super Admin</button>
   <button class="navbtn master-only" data-page="attanalytics" onclick="showPage('attanalytics',this)">📈 हजेरी विश्लेषण</button>
   <button class="navbtn" data-page="earlyleave" onclick="showPage('earlyleave',this)">🚪 घरी जाणारे</button>
+  <button class="navbtn" data-page="teacherlist" onclick="showPage('teacherlist',this)">📒 वर्ग शिक्षक यादी</button>
   <button class="navbtn" data-page="teacher" onclick="showPage('teacher',this)">🏫 वर्ग शिक्षक</button>
   <span class="user-chip" id="authUserChip">User</span>
   <button class="logout-btn" onclick="logoutUser()">Logout</button>
@@ -326,6 +327,11 @@
       <div class="icon">📑</div>
       <h3>रिपोर्ट</h3>
       <p>जात/प्रवर्ग/वर्ग/फी/मोबाईल/पत्ता/लिंग निहाय यादी — A4 PDF Export</p>
+    </div>
+    <div class="dcard master-only" data-page="teacherlist" onclick="showPage('teacherlist',this)">
+      <div class="icon">📒</div>
+      <h3>वर्ग शिक्षक यादी</h3>
+      <p>वर्गनिहाय वर्ग शिक्षकांची नावे, मोबाईल नंबर — कॉल व WhatsApp</p>
     </div>
     <div class="dcard master-only" data-page="earlyleave" onclick="showPage('earlyleave',this)">
       <div class="icon">🚪</div>
@@ -894,7 +900,7 @@
 <div id="shareCardWrap" style="position:fixed;left:-9999px;top:0;z-index:-1">
   <div id="shareCard" style="width:640px;background:#ffffff;color:#1a1a1a;font-family:'Noto Sans Devanagari','Mukta',sans-serif;padding:24px;box-sizing:border-box">
     <div style="text-align:center;border-bottom:3px solid #d4902a;padding-bottom:12px;margin-bottom:16px">
-      <div style="font-size:18px;font-weight:700;color:#1a3a6a">Shri Govindrao Seksaria High School, Pachora</div>
+      <div style="font-size:19px;font-weight:700;color:#1a3a6a">श्री.गोविंदराम सेक्सरिया हायस्कूल, पाचोरा</div>
       <div style="font-size:13px;color:#555">विद्यार्थी माहिती (Student Profile)</div>
     </div>
     <div style="display:flex;gap:18px;align-items:flex-start;margin-bottom:16px">
@@ -1212,6 +1218,22 @@
 </div>
 
 <!-- ==================== रिपोर्ट PAGE (Super Master / Master — सर्व वर्ग; Class Teacher — फक्त स्वतःचा वर्ग) ==================== -->
+<!-- ==================== वर्ग शिक्षक यादी — V19.39 ==================== -->
+<div id="pg-teacherlist" class="page">
+  <div class="sec-title" style="margin-bottom:10px">📒 वर्ग शिक्षक यादी</div>
+  <div class="card">
+    <div class="card-header"><div><h2>वर्गनिहाय वर्ग शिक्षक</h2><p>नाव, वर्ग किंवा मोबाईल नंबरने शोधा. मोबाईलसमोरील बटणाने थेट कॉल किंवा WhatsApp करा.</p></div>
+      <button class="btn btn-blue btn-sm" onclick="tlLoad()">🔄 Refresh</button></div>
+    <div class="card-body">
+      <div class="frow" style="gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
+        <div class="fg" style="min-width:240px;flex:1"><label>🔍 शोधा</label><input id="tl_search" oninput="tlRender()" placeholder="नाव / वर्ग / मोबाईल..."></div>
+      </div>
+      <div id="tl_count" style="font-size:13px;margin-bottom:8px"></div>
+      <div id="tl_list">⏳ Load होत आहे...</div>
+    </div>
+  </div>
+</div>
+
 <!-- ==================== घरी जाणारे विद्यार्थी — V19.37 ==================== -->
 <div id="pg-earlyleave" class="page">
   <div class="sec-title" style="margin-bottom:10px">🚪 घरी जाणारे विद्यार्थी</div>

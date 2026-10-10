@@ -134,6 +134,12 @@ function doGet(e) {
   if (p.action === "photoChunkFinish") {
     return wrap(cb, finishPhotoChunkUpload(p));
   }
+  if (p.action === "getClassTeachers") {
+    return doGetClassTeachers(p, cb);
+  }
+  if (p.action === "getPhotoData") {
+    return doGetPhotoData(p, cb);
+  }
   if (p.action === "getPhotoUrl" && p.regNo) {
     return wrap(cb, getPhotoUrlByRegNo(p.regNo));
   }
@@ -557,7 +563,7 @@ function doGetUsers(p, cb) {
     var out = [];
     for (var i=0;i<rows.length;i++) {
       if (!rows[i][0]) continue;
-      out.push({ rowIndex:i+2, username:rows[i][0], password:rows[i][1], role:rows[i][2], label:rows[i][3], assignedClass:rows[i][4]||"" });
+      out.push({ rowIndex:i+2, username:rows[i][0], password:rows[i][1], role:normRole_(rows[i][2]), label:rows[i][3], assignedClass:rows[i][4]||"" });
     }
     return wrap(cb, {status:"ok", data: out});
   } catch(err) {
@@ -575,8 +581,8 @@ function doSaveUser(p, cb) {
     var sh = getUsersSheet();
     var username = (p.username||"").toString().trim();
     if (!username) return wrap(cb, {status:"error", message:"Username आवश्यक आहे."});
-    var roleIn = (p.role || "cert").toString().trim();
-    if (["super","master","deo","cert","teacher","peon"].indexOf(roleIn) === -1) {
+    var roleIn = normRole_(p.role || "cert");
+    if (VALID_ROLES.indexOf(roleIn) === -1) {
       return wrap(cb, {status:"error", message:"Role चुकीचा आहे."});
     }
     var rowToWrite = findRowByKey(sh, 1, username);
@@ -2230,10 +2236,13 @@ function doGetAttendancePending(p, cb) {
 // व HMAC ने स्वाक्षरी केलेला Token देतो; पुढील प्रत्येक विनंतीत Token तपासून Role server स्वतः ठरवतो.
 // स्थलांतर: (१) setSuperCredentials('user_s','पासवर्ड') (२) नवीन Deploy (३) Login चाचणी (४) enableAuthEnforcement()
 var TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
+var VALID_ROLES = ["super","master","deo","cert","teacher","peon"];
+// Users sheet मध्ये "Peon" / " Teacher " असे मोठ्या अक्षरात किंवा space सह लिहिले तरी लहान अक्षरात बदलून तपासतो.
+function normRole_(r) { return (r || "").toString().trim().toLowerCase(); }
 var AUTH_PUBLIC_ACTIONS = {ping:1, login:1, verify:1};
 var TEACHER_CLASS_ACTIONS = {getClassStudents:1, getTeacherDashboard:1, saveAttendance:1, getAttendance:1, getAttendanceAnalytics:1, getEarlyLeave:1, saveEarlyLeave:1};
 // Peon (शिपाई) फक्त हेच करू शकतो: विद्यार्थी शोध/प्रोफाइल (getAll), घरी जाणाऱ्यांची यादी, मार्क-आउट, स्वतःचा Password बदल
-var PEON_ACTIONS = {getAll:1, getEarlyLeavePeon:1, markEarlyLeaveOut:1, changePassword:1};
+var PEON_ACTIONS = {getAll:1, getEarlyLeavePeon:1, markEarlyLeaveOut:1, changePassword:1, getPhotoData:1, getClassTeachers:1};
 var _authSecretMem = null;
 
 function authSecret_() {
@@ -2318,7 +2327,11 @@ function doLogin(p, cb) {
       var rows = sh.getRange(2, 1, sh.getLastRow() - 1, 5).getValues();
       for (var i = 0; i < rows.length; i++) {
         if ((rows[i][0] || "").toString().trim() === username && (rows[i][1] || "").toString() === password) {
-          user = {role: (rows[i][2] || "").toString().trim(), label: rows[i][3] || username, assignedClass: (rows[i][4] || "").toString()};
+          var rl = normRole_(rows[i][2]);
+          if (VALID_ROLES.indexOf(rl) === -1) {
+            return wrap(cb, {status:"error", code:"badrole", message:"या User चा Role (" + (rows[i][2] || "रिकामा") + ") अमान्य आहे. Users sheet मध्ये Role: super / master / deo / cert / teacher / peon यापैकी एक हवा."});
+          }
+          user = {role: rl, label: rows[i][3] || username, assignedClass: (rows[i][4] || "").toString()};
           break;
         }
       }
@@ -2925,5 +2938,82 @@ function doMarkEarlyLeaveOut(d) {
     return {status:"error", message:err.toString()};
   } finally {
     if (locked) lock.releaseLock();
+  }
+}
+
+
+// =====================================================================
+// ===== V19.38 — Profile Share Card साठी फोटो (base64) =====
+// Drive thumbnail वर CORS नसल्याने browser (html2canvas) तो Canvas वर घेऊ शकत नाही → server वरून data: URL म्हणून देतो.
+// =====================================================================
+function doGetPhotoData(p, cb) {
+  try {
+    var regNo = (p.regNo || "").toString().trim();
+    if (!regNo) return wrap(cb, {status:"error", message:"regNo required"});
+    var file = null;
+    // १) Photo फोल्डरमधील <regNo>.jpg
+    try {
+      var files = DriveApp.getFolderById(PHOTO_FOLDER_ID).getFilesByName(cleanRegFileName(regNo) + ".jpg");
+      if (files.hasNext()) file = files.next();
+    } catch (e1) {}
+    // २) Students मध्ये साठवलेल्या Photo URL मधील File ID
+    if (!file) {
+      var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Students");
+      var row = sh ? (findRowByKey(sh, 3, regNo) || findRowByKey(sh, 4, regNo)) : 0;
+      var url = row ? (sh.getRange(row, 27).getValue() || "").toString() : "";
+      var m = /[?&]id=([\w-]+)|\/d\/([\w-]+)/.exec(url);
+      if (m) { try { file = DriveApp.getFileById(m[1] || m[2]); } catch (e2) {} }
+    }
+    if (!file) return wrap(cb, {status:"notfound", message:"फोटो सापडला नाही"});
+    var blob = file.getBlob();
+    var bytes = blob.getBytes();
+    if (bytes.length > 700000) {   // मोठा फोटो — लहान Thumbnail वापरा म्हणजे Response हलका राहतो
+      try { blob = file.getThumbnail(); bytes = blob.getBytes(); } catch (e3) {}
+    }
+    var mime = (blob.getContentType() || "image/jpeg").toString();
+    if (mime.indexOf("image/") !== 0) mime = "image/jpeg";
+    return wrap(cb, {status:"ok", dataUrl: "data:" + mime + ";base64," + Utilities.base64Encode(bytes)});
+  } catch (err) {
+    return wrap(cb, {status:"error", message:err.toString()});
+  }
+}
+
+
+// =====================================================================
+// ===== V19.39 — वर्ग शिक्षक यादी (Sheet: "Class_Teacher") =====
+// स्तंभ: A Class (5th-A) | B Class (5 वी) | C Div (अ) | D EMPLOYEE NAME | E कर्मचारी नाव | F MOB NO | G Emp Short Name
+// पाहण्याचा अधिकार: Super Master, Master, Data Operator (deo), Peon
+// =====================================================================
+function doGetClassTeachers(p, cb) {
+  try {
+    var role = p.requesterRole;
+    if (["super", "master", "deo", "peon"].indexOf(role) === -1) return wrap(cb, {status:"error", message:"वर्ग शिक्षक यादी पाहण्याचा अधिकार नाही."});
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sh = ss.getSheetByName("Class_Teacher");
+    if (!sh) {
+      ss.getSheets().forEach(function(x) { if (!sh && x.getName().toString().toLowerCase().replace(/[\s_\-]+/g, "") === "classteacher") sh = x; });
+    }
+    if (!sh) return wrap(cb, {status:"error", message:"\"Class_Teacher\" नावाची Sheet विद्यार्थी-माहितीच्या Google Sheet मध्ये सापडली नाही."});
+    var n = sh.getLastRow() - 1;
+    var out = [];
+    if (n > 0) {
+      var rows = sh.getRange(2, 1, n, 7).getValues();
+      rows.forEach(function(r, idx) {
+        var nameEn = (r[3] || "").toString().trim(), nameMr = (r[4] || "").toString().trim();
+        if (!nameEn && !nameMr) return;
+        var mob = r[5];
+        mob = (typeof mob === "number") ? String(mob) : (mob || "").toString().trim();
+        out.push({classKey: (r[0] || "").toString().trim(), classMr: (r[1] || "").toString().trim(), div: (r[2] || "").toString().trim(),
+          nameEn: nameEn, nameMr: nameMr, mobile: mob, short: (r[6] || "").toString().trim(), _i: idx});
+      });
+      out.sort(function(a, b) {
+        var c = classSortKey_(a.classKey.split("-")[0]) - classSortKey_(b.classKey.split("-")[0]);
+        return c || (a._i - b._i);
+      });
+      out.forEach(function(o) { delete o._i; });
+    }
+    return wrap(cb, {status:"ok", data: out});
+  } catch (err) {
+    return wrap(cb, {status:"error", message:err.toString()});
   }
 }

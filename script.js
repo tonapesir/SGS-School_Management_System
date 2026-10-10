@@ -32,7 +32,7 @@ window.androidBackPressed = function() {
 
 
 // URL persistence
-var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbw6S4cuW1J_EjygDlnKDXVTF4PLwz3vUir3Xt_RHrVmNMM-e3gtaKmVK_NNk9P6Ds4l/exec';
+var DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbzyGVTjo9HGf3aQhVmoprKLqrmVE_BIIaOuCcm1i6xq0XNYF56KVo0Zmfn832GpILG2/exec';
 
 // =====================================================
 // 🔐 LOGIN + ROLE PERMISSIONS
@@ -45,6 +45,8 @@ var AUTH_USERS = {
   teacher_1: { password: 'Pass@1234', role: 'teacher', label: 'वर्ग शिक्षक', assignedClass: '7th|अ' }
 };
 var currentUser = null;
+var VALID_ROLES = ['super','master','deo','cert','teacher','peon'];
+function normRole(r) { return String(r == null ? '' : r).trim().toLowerCase(); }
 // V19.36: Server-side Login (Token). Server वर setSuperCredentials + enableAuthEnforcement झाल्यावर हे false करा —
 // तेव्हा browser मधील hardcoded/Sheet मधून आलेले Password पूर्णपणे बंद होतात.
 var ALLOW_LEGACY_LOGIN = true;
@@ -60,12 +62,12 @@ function handleAuthExpired() {
   setTimeout(function() { _authExpiredHandled = false; }, 2000);
 }
 var USER_ALLOWED_PAGES = {
-  master: ['dashboard','student','lc','bonafide','attendance','search','history','users','profile','stats','maintenance','classinfo','report','attanalytics','earlyleave'],
-  deo:    ['student','search','history','users','profile'],
+  master: ['dashboard','student','lc','bonafide','attendance','search','history','users','profile','stats','maintenance','classinfo','report','attanalytics','earlyleave','teacherlist'],
+  deo:    ['student','search','history','users','profile','teacherlist'],
   cert:   ['bonafide','attendance','search','history','users','profile'],
-  super:  ['dashboard','student','lc','bonafide','attendance','search','history','users','profile','stats','maintenance','classinfo','report','superadmin','attanalytics','earlyleave'],
+  super:  ['dashboard','student','lc','bonafide','attendance','search','history','users','profile','stats','maintenance','classinfo','report','superadmin','attanalytics','earlyleave','teacherlist'],
   teacher:['teacher','profile','report','earlyleave'],
-  peon:   ['search','profile','earlyleave']   // शिपाई: विद्यार्थी शोध, प्रोफाइल, घरी जाणाऱ्यांची मार्क-आउट यादी
+  peon:   ['search','profile','earlyleave','teacherlist']   // शिपाई: विद्यार्थी शोध, प्रोफाइल, घरी जाणाऱ्यांची मार्क-आउट यादी
 };
 var CERT_EDITABLE_FIELDS = {
   bf: ['bf_regNo','bf_stxt2','bf_stxt57','bf_stxt3','bf_stxt3_sel','bf_stxt6'],
@@ -96,7 +98,7 @@ function syncRemoteUsers(onDone) {
   window[cb] = function(r) {
     if (r && r.status === 'ok' && r.data) {
       r.data.forEach(function(u) {
-        AUTH_USERS[u.username] = { password: u.password, role: u.role, label: u.label, assignedClass: u.assignedClass || '' };
+        AUTH_USERS[u.username] = { password: u.password, role: normRole(u.role), label: u.label, assignedClass: u.assignedClass || '' };
       });
     }
     finish();
@@ -120,7 +122,8 @@ function initAuth() {
   try {
     var sess = JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null');
     if (sess && sess.token && sess.exp > Date.now()) {
-      currentUser = { username: sess.username, role: sess.role, label: sess.label, assignedClass: sess.assignedClass || '', token: sess.token, exp: sess.exp };
+      currentUser = { username: sess.username, role: normRole(sess.role), label: sess.label, assignedClass: sess.assignedClass || '', token: sess.token, exp: sess.exp };
+      if (VALID_ROLES.indexOf(currentUser.role) === -1) { currentUser = null; sessionStorage.removeItem(SESSION_KEY); throw new Error('bad role'); }
       applyTeacherClassInfo();
       document.body.classList.remove('auth-locked');
       applyRoleUI();
@@ -228,6 +231,12 @@ function attemptLogin(ev) {
   return false;
 }
 function completeLogin(username, user, pEl, st, token, exp) {
+  // Role लहान अक्षरात तपासा; अमान्य Role असल्यास Login नाकारा (पूर्वी अनोळखी Role ला सर्व Tab दिसत होते)
+  user = { role: normRole(user.role), label: user.label, assignedClass: user.assignedClass || '' };
+  if (VALID_ROLES.indexOf(user.role) === -1) {
+    if (st) { st.textContent = 'या User चा Role अमान्य आहे. Users sheet मध्ये Role: super / master / deo / cert / teacher / peon (लहान अक्षरात) असा हवा.'; st.className = 'login-status err'; st.style.display = 'block'; }
+    return false;
+  }
   if (token) {
     currentUser = { username: username, role: user.role, label: user.label, assignedClass: user.assignedClass || '', token: token, exp: exp };
     try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(currentUser)); } catch (e) {}
@@ -320,6 +329,7 @@ function applyFormPermissions() {
     if (el.id.indexOf('pwd_') === 0) { el.disabled=false; el.classList.remove('locked-input'); return; }
     if (el.id.indexOf('tch_') === 0) { el.disabled=false; el.classList.remove('locked-input'); return; }
     if (el.id.indexOf('el_') === 0) { el.disabled=false; el.classList.remove('locked-input'); return; }
+    if (el.id.indexOf('tl_') === 0) { el.disabled=false; el.classList.remove('locked-input'); return; }
     if (el.id.indexOf('rp_') === 0) { el.disabled=false; el.classList.remove('locked-input'); return; }
     if (el.id.indexOf('um_') === 0) {
       var canManageUsers = currentUser.role === 'super';
@@ -3366,6 +3376,8 @@ function shareProfileImage() {
   btn.disabled = true;
   btn.textContent = '⏳ Image तयार होत आहे...';
   if (statusEl) statusEl.textContent = '';
+  var photoNote = '';   // फोटो नसल्यास/न आल्यास अंतिम संदेशासोबत दाखवायची सूचना
+  function setSt(t) { if (statusEl) statusEl.textContent = t + (photoNote ? '  ' + photoNote : ''); }
 
   // ===== hidden Card भरा =====
   document.getElementById('shareCardName').textContent = d.firstName || '—';
@@ -3400,7 +3412,7 @@ function shareProfileImage() {
         try {
           window.AndroidShare.shareImageBase64(base64Data, fileName, waMsg, waNum);
           btn.disabled = false; btn.textContent = '📤 विद्यार्थ्याचे Profile फोटो WhatsApp वर पाठवा';
-          if (statusEl) statusEl.textContent = '✅ WhatsApp उघडत आहे...';
+          setSt('✅ WhatsApp उघडत आहे...');
           return;
         } catch (eAndroid) {
           // Native bridge अयशस्वी झाल्यास खालील सामान्य पद्धतीने पुढे जा
@@ -3414,11 +3426,11 @@ function shareProfileImage() {
           navigator.share({ files: [file], title: 'Student Profile', text: waMsg })
             .then(function(){
               btn.disabled = false; btn.textContent = '📤 विद्यार्थ्याचे Profile फोटो WhatsApp वर पाठवा';
-              if (statusEl) statusEl.textContent = '✅ Share पूर्ण झाले.';
+              setSt('✅ Share पूर्ण झाले.');
             })
             .catch(function(){
               btn.disabled = false; btn.textContent = '📤 विद्यार्थ्याचे Profile फोटो WhatsApp वर पाठवा';
-              if (statusEl) statusEl.textContent = 'ℹ️ Share रद्द झाले.';
+              setSt('ℹ️ Share रद्द झाले.');
             });
         } else {
           // Fallback: फोटो Download करा + WhatsApp मध्ये संदेश तयार उघडा (फोटो manually attach करावा लागेल)
@@ -3430,7 +3442,7 @@ function shareProfileImage() {
           var waLink = (waNum ? 'https://wa.me/' + waNum : 'https://wa.me/') + '?text=' + encodeURIComponent(waMsg + ' (सोबत डाउनलोड झालेला फोटो जोडा)');
           window.open(waLink, '_blank');
           btn.disabled = false; btn.textContent = '📤 विद्यार्थ्याचे Profile फोटो WhatsApp वर पाठवा';
-          if (statusEl) statusEl.textContent = '✅ फोटो Download झाला — आता उघडलेल्या WhatsApp Chat मध्ये तो फोटो जोडून (Attach) Send करा.';
+          setSt('✅ फोटो Download झाला — आता उघडलेल्या WhatsApp Chat मध्ये तो फोटो जोडून (Attach) Send करा.');
         }
       }, 'image/png');
     }).catch(function(err) {
@@ -3439,21 +3451,27 @@ function shareProfileImage() {
     });
   }
 
-  // फोटो Load होण्याची वाट पाहून मगच Canvas घ्या (cross-origin फोटो असल्यास तसाच पुढे जा)
-  if (d.photoUrl) {
-    photoBox.innerHTML = '<img src="' + escAttr(d.photoUrl) + '" crossorigin="anonymous" style="width:100%;height:100%;object-fit:cover" onerror="this.remove()">';
-    var imgEl = photoBox.querySelector('img');
-    if (imgEl && !imgEl.complete) {
-      imgEl.onload = renderAndShare;
-      imgEl.onerror = renderAndShare;
-      setTimeout(renderAndShare, 3000); // खूप वेळ लागल्यास वाट न पाहता पुढे जा
-    } else {
-      renderAndShare();
-    }
-  } else {
+  // V19.38: फोटो server वरून base64 (data: URL) म्हणून आणा — Drive thumbnail वर CORS नसल्याने तो थेट Canvas वर येत नव्हता
+  window._photoDataCache = window._photoDataCache || {};
+  function putPhoto(dataUrl) {
+    photoBox.innerHTML = '<img src="' + dataUrl + '" style="width:100%;height:100%;object-fit:cover">';
+    var im = photoBox.querySelector('img');
+    if (im && !im.complete) { var go = function() { renderAndShare(); }; im.onload = go; im.onerror = go; setTimeout(go, 3000); }
+    else renderAndShare();
+  }
+  function noPhoto(msg) {
     photoBox.innerHTML = '👤';
+    photoNote = msg || '';
     renderAndShare();
   }
+  var rg = String(d.regNo || '');
+  if (rg && window._photoDataCache[rg]) { putPhoto(window._photoDataCache[rg]); return; }
+  if (!d.photoUrl && !rg) { noPhoto(''); return; }
+  jsonpRequest({action: 'getPhotoData', regNo: rg}, function(r) {
+    if (r && r.status === 'ok' && r.dataUrl) { window._photoDataCache[rg] = r.dataUrl; putPhoto(r.dataUrl); }
+    else if (r && r.status === 'notfound') noPhoto('ℹ️ या विद्यार्थ्याचा फोटो उपलब्ध नाही — फोटोशिवाय Profile तयार केले.');
+    else noPhoto('⚠️ फोटो आणता आला नाही (' + friendlyMsg((r && r.message) || 'सर्व्हर प्रतिसाद नाही') + ') — फोटोशिवाय Profile तयार केले.');
+  });
 }
 
 // ===== LC/BF/AT HISTORY (V19.8) =====
@@ -3554,6 +3572,9 @@ showPage = function(name, btn) {
   }
   if (name === 'earlyleave') {
     elInit();
+  }
+  if (name === 'teacherlist') {
+    tlInit();
   }
   if (name === 'stats') {
     mstLoadStatsReport();
@@ -5811,4 +5832,45 @@ function elMark(i, status) {
     else if (x && x.status === 'queued') { r.status = status; elPeonRender(); msg.textContent = x.message; }
     else msg.textContent = errTxt(x);
   });
+}
+
+// =====================================================================
+// V19.39 — 📒 वर्ग शिक्षक यादी (Super / Master / Data Operator / Peon) — कॉल व WhatsApp सह
+// =====================================================================
+var tlState = { data: [], loadedAt: 0 };
+function tlInit() {
+  if (tlState.data.length && (Date.now() - tlState.loadedAt) < 5 * 60 * 1000) { tlRender(); return; }
+  tlLoad();
+}
+function tlLoad() {
+  var box = document.getElementById('tl_list');
+  box.innerHTML = '<div style="padding:10px">⏳ Load होत आहे...</div>';
+  jsonpRequest({action: 'getClassTeachers', requesterRole: currentUser.role}, function(r) {
+    if (!r || r.status !== 'ok') { box.innerHTML = '<div style="padding:10px">❌ ' + escRpHtml(friendlyMsg((r && r.message) || 'Load Failed')) + '</div>'; return; }
+    tlState.data = r.data || [];
+    tlState.loadedAt = Date.now();
+    tlRender();
+  });
+}
+function tlRender() {
+  var box = document.getElementById('tl_list');
+  var q = ((document.getElementById('tl_search') || {}).value || '').trim().toLowerCase();
+  var list = tlState.data.filter(function(t) {
+    if (!q) return true;
+    return [t.classKey, t.classMr, t.div, t.nameEn, t.nameMr, t.short, t.mobile].join(' ').toLowerCase().indexOf(q) !== -1;
+  });
+  document.getElementById('tl_count').textContent = 'एकूण वर्ग शिक्षक: ' + tlState.data.length + (q ? ' — सापडले: ' + list.length : '');
+  if (!list.length) { box.innerHTML = '<div style="padding:10px;opacity:.8">' + (tlState.data.length ? 'शोधाशी जुळणारे वर्ग शिक्षक सापडले नाहीत.' : 'यादी रिकामी आहे.') + '</div>'; return; }
+  var btn = 'display:inline-block;padding:5px 11px;border-radius:6px;font-size:12.5px;text-decoration:none;margin:2px;color:#fff;white-space:nowrap;';
+  var rows = list.map(function(t, i) {
+    var call = telHref(t.mobile);
+    var wa = telHref(t.mobile) ? waHref(t.mobile, 'नमस्कार ' + (t.nameMr || t.nameEn) + ',') : '';
+    var cls = (t.classMr || t.classKey) + (t.div ? ' - ' + t.div : '');
+    return '<tr><td>' + (i + 1) + '</td><td style="white-space:nowrap"><b>' + escRpHtml(cls) + '</b></td>' +
+      '<td><b>' + escRpHtml(t.nameMr || t.nameEn) + '</b><div style="font-size:11.5px;opacity:.7">' + escRpHtml(t.nameEn) + (t.short ? ' · ' + escRpHtml(t.short) : '') + '</div></td>' +
+      '<td style="white-space:nowrap">' + escRpHtml(t.mobile) + '</td>' +
+      '<td>' + (call ? '<a href="' + call + '" style="' + btn + 'background:#1a6a8a">📞 कॉल</a>' : '<span style="opacity:.5;font-size:12px">नंबर नाही</span>') +
+      (wa ? '<a href="' + wa + '" target="_blank" rel="noopener" style="' + btn + 'background:#1a7a3a">📲 WhatsApp</a>' : '') + '</td></tr>';
+  }).join('');
+  box.innerHTML = '<div style="overflow-x:auto"><table class="hist-table"><thead><tr><th>अ.क्र.</th><th>वर्ग</th><th>वर्ग शिक्षक</th><th>मोबाईल</th><th>संपर्क</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
 }
